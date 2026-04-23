@@ -61,7 +61,9 @@ function ensureClientBuilt() {
   if (fs.existsSync(INDEX_HTML)) return true;
   console.log('[Boot] client/dist not found — running `vite build` now…');
   try {
-    execSync('npx vite build', { cwd: REPO_ROOT, stdio: 'inherit' });
+    const viteBin = path.join(REPO_ROOT, 'node_modules', '.bin', 'vite');
+    const cmd = fs.existsSync(viteBin) ? `"${viteBin}" build` : 'npx --yes vite build';
+    execSync(cmd, { cwd: REPO_ROOT, stdio: 'inherit' });
     return fs.existsSync(INDEX_HTML);
   } catch (err) {
     console.warn('[Boot] Vite build failed:', err.message);
