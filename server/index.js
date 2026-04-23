@@ -22,6 +22,7 @@ const calendarRoutes = require('./routes/calendar');
 const emailsRoutes = require('./routes/emails');
 const clientsRoutes = require('./routes/clients');
 const webhooksRoutes = require('./routes/webhooks');
+const adminRoutes = require('./routes/admin');
 
 const { deployAgent } = require('./services/superAgentService');
 const { sendDeadlineReminders } = require('./services/reminderService');
@@ -55,6 +56,7 @@ app.use('/api/calendar', calendarRoutes);
 app.use('/api/emails', emailsRoutes);
 app.use('/api/clients', clientsRoutes);
 app.use('/api/webhooks', webhooksRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'WBCPA Super Agent' });

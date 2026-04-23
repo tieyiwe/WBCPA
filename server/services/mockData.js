@@ -438,6 +438,327 @@ const MOCK_CLIENTS = [
   }
 ];
 
+// ─── Admin & Collaboration ──────────────────────────────────────────────────
+
+const MOCK_TEAM_MEMBERS = [
+  {
+    id: 'tm_001',
+    name: 'Winston Brown',
+    email: 'winston@wbcpa.com',
+    phone: '+12025550001',
+    role: 'owner',
+    title: 'Founder & CPA',
+    status: 'active',
+    avatar_color: '#c9a84c',
+    last_active_at: minsAgo(4),
+    created_at: daysAgo(720)
+  },
+  {
+    id: 'tm_002',
+    name: 'Angela Reyes',
+    email: 'angela@wbcpa.com',
+    phone: '+12025550002',
+    role: 'admin',
+    title: 'Practice Manager',
+    status: 'active',
+    avatar_color: '#b0916b',
+    last_active_at: minsAgo(22),
+    created_at: daysAgo(540)
+  },
+  {
+    id: 'tm_003',
+    name: 'Devon Parker',
+    email: 'devon@wbcpa.com',
+    phone: '+12025550003',
+    role: 'manager',
+    title: 'Senior Tax Advisor',
+    status: 'active',
+    avatar_color: '#6d8ac7',
+    last_active_at: hoursAgo(1),
+    created_at: daysAgo(380)
+  },
+  {
+    id: 'tm_004',
+    name: 'Maya Singh',
+    email: 'maya@wbcpa.com',
+    phone: '+12025550004',
+    role: 'staff',
+    title: 'Tax Associate',
+    status: 'active',
+    avatar_color: '#4ea58a',
+    last_active_at: minsAgo(12),
+    created_at: daysAgo(210)
+  },
+  {
+    id: 'tm_005',
+    name: 'Luis Ortega',
+    email: 'luis@wbcpa.com',
+    phone: '+12025550005',
+    role: 'staff',
+    title: 'Client Success',
+    status: 'active',
+    avatar_color: '#4ea58a',
+    last_active_at: hoursAgo(3),
+    created_at: daysAgo(150)
+  },
+  {
+    id: 'tm_006',
+    name: 'Rita Kohl',
+    email: 'rita@wbcpa.com',
+    phone: '+12025550006',
+    role: 'viewer',
+    title: 'Bookkeeper (read-only)',
+    status: 'active',
+    avatar_color: '#7a7f8c',
+    last_active_at: daysAgo(2),
+    created_at: daysAgo(90)
+  },
+  {
+    id: 'tm_007',
+    name: 'Taylor Finch',
+    email: 'taylor@wbcpa.com',
+    phone: null,
+    role: 'staff',
+    title: 'Tax Intern',
+    status: 'invited',
+    avatar_color: '#4ea58a',
+    last_active_at: null,
+    created_at: daysAgo(3)
+  },
+  {
+    id: 'tm_008',
+    name: 'Morgan Leigh',
+    email: 'morgan@wbcpa.com',
+    phone: '+12025550008',
+    role: 'staff',
+    title: 'Former Associate',
+    status: 'deactivated',
+    avatar_color: '#4ea58a',
+    last_active_at: daysAgo(60),
+    created_at: daysAgo(420)
+  }
+];
+
+const MOCK_ACTIVITY_LOG = [
+  { id: 'act_001', actor_id: 'tm_002', actor_name: 'Angela Reyes', action: 'subscriber.updated', target_type: 'subscriber', target_id: 'sub_002', target_label: 'Sarah Chen', summary: 'Raised tier from Standard → Premium', at: minsAgo(8) },
+  { id: 'act_002', actor_id: 'tm_004', actor_name: 'Maya Singh', action: 'email.resolved', target_type: 'email', target_id: 'email_003', target_label: 'IRS Notice CP2000', summary: 'Replied to David Ramirez after staff review', at: minsAgo(24) },
+  { id: 'act_003', actor_id: 'tm_001', actor_name: 'Winston Brown', action: 'agent.deployed', target_type: 'agent', target_id: 'bland_agent', target_label: 'Voice Agent', summary: 'Redeployed with PEAK_SEASON tone', at: hoursAgo(1) },
+  { id: 'act_004', actor_id: 'tm_003', actor_name: 'Devon Parker', action: 'task.assigned', target_type: 'task', target_id: 'task_002', target_label: 'Review 1031 replacement list', summary: 'Assigned to Maya Singh', at: hoursAgo(2) },
+  { id: 'act_005', actor_id: 'tm_002', actor_name: 'Angela Reyes', action: 'team.invited', target_type: 'team_member', target_id: 'tm_007', target_label: 'Taylor Finch', summary: 'Invited as Staff', at: daysAgo(3) },
+  { id: 'act_006', actor_id: 'tm_001', actor_name: 'Winston Brown', action: 'role.permission_changed', target_type: 'role', target_id: 'manager', target_label: 'Manager role', summary: 'Granted appointments.cancel', at: daysAgo(5) },
+  { id: 'act_007', actor_id: 'tm_005', actor_name: 'Luis Ortega', action: 'note.created', target_type: 'subscriber', target_id: 'sub_001', target_label: 'Marcus Johnson', summary: 'Added internal note re: 1031 timing', at: daysAgo(1) },
+  { id: 'act_008', actor_id: 'tm_001', actor_name: 'Winston Brown', action: 'system.setting_changed', target_type: 'setting', target_id: 'auto_send_enabled', target_label: 'Auto-send emails', at: daysAgo(2), summary: 'Turned ON' },
+  { id: 'act_009', actor_id: 'tm_002', actor_name: 'Angela Reyes', action: 'team.deactivated', target_type: 'team_member', target_id: 'tm_008', target_label: 'Morgan Leigh', summary: 'Offboarded', at: daysAgo(60) },
+  { id: 'act_010', actor_id: 'tm_003', actor_name: 'Devon Parker', action: 'appointment.booked', target_type: 'appointment', target_id: 'appt_004', target_label: 'Cost seg review — Elena Martinez', summary: 'Manually booked', at: hoursAgo(2) }
+];
+
+const MOCK_TASKS = [
+  {
+    id: 'task_001',
+    title: 'Respond to David Ramirez CP2000 notice',
+    description: 'Review IRS CP2000. Pull 1099-K data from Stripe + PayPal for 2023. Draft response by Friday.',
+    status: 'in_progress',
+    priority: 'high',
+    assignee_id: 'tm_003',
+    assignee_name: 'Devon Parker',
+    creator_id: 'tm_001',
+    creator_name: 'Winston Brown',
+    due_at: daysAhead(2),
+    related_type: 'subscriber',
+    related_id: 'sub_003',
+    related_label: 'David Ramirez',
+    created_at: hoursAgo(4),
+    updated_at: minsAgo(30),
+    comments_count: 3
+  },
+  {
+    id: 'task_002',
+    title: 'Review 1031 replacement property shortlist',
+    description: 'Marcus is sending 4 candidate properties before Thursday. Confirm each qualifies as like-kind and check 45-day window math.',
+    status: 'todo',
+    priority: 'high',
+    assignee_id: 'tm_004',
+    assignee_name: 'Maya Singh',
+    creator_id: 'tm_003',
+    creator_name: 'Devon Parker',
+    due_at: daysAhead(3),
+    related_type: 'subscriber',
+    related_id: 'sub_001',
+    related_label: 'Marcus Johnson',
+    created_at: hoursAgo(2),
+    updated_at: hoursAgo(2),
+    comments_count: 1
+  },
+  {
+    id: 'task_003',
+    title: 'Renewal outreach — Robert Kim',
+    description: 'Subscription lapsed 35 days ago. Check call history and send personalized renewal email.',
+    status: 'todo',
+    priority: 'medium',
+    assignee_id: 'tm_005',
+    assignee_name: 'Luis Ortega',
+    creator_id: 'tm_002',
+    creator_name: 'Angela Reyes',
+    due_at: daysAhead(1),
+    related_type: 'subscriber',
+    related_id: 'sub_007',
+    related_label: 'Robert Kim',
+    created_at: daysAgo(1),
+    updated_at: daysAgo(1),
+    comments_count: 0
+  },
+  {
+    id: 'task_004',
+    title: 'Prepare Augusta Rule documentation kit',
+    description: 'Draft standard template for Section 280A meeting logs, rental rates, and corporate minutes. Ship as a client-ready PDF.',
+    status: 'review',
+    priority: 'medium',
+    assignee_id: 'tm_004',
+    assignee_name: 'Maya Singh',
+    creator_id: 'tm_003',
+    creator_name: 'Devon Parker',
+    due_at: daysAhead(6),
+    related_type: null,
+    related_id: null,
+    related_label: null,
+    created_at: daysAgo(4),
+    updated_at: hoursAgo(6),
+    comments_count: 2
+  },
+  {
+    id: 'task_005',
+    title: 'Q1 estimated tax reminder blast',
+    description: 'Schedule SMS + email reminders for all active subscribers with Q1 deadline within 10 days.',
+    status: 'done',
+    priority: 'high',
+    assignee_id: 'tm_005',
+    assignee_name: 'Luis Ortega',
+    creator_id: 'tm_002',
+    creator_name: 'Angela Reyes',
+    due_at: daysAgo(1),
+    related_type: null,
+    related_id: null,
+    related_label: null,
+    created_at: daysAgo(3),
+    updated_at: daysAgo(1),
+    comments_count: 4
+  },
+  {
+    id: 'task_006',
+    title: 'Onboard Taylor Finch',
+    description: 'Walk Taylor through agent dashboard, permissions, and escalation protocol. Day-1 checklist.',
+    status: 'todo',
+    priority: 'low',
+    assignee_id: 'tm_002',
+    assignee_name: 'Angela Reyes',
+    creator_id: 'tm_001',
+    creator_name: 'Winston Brown',
+    due_at: daysAhead(4),
+    related_type: 'team_member',
+    related_id: 'tm_007',
+    related_label: 'Taylor Finch',
+    created_at: daysAgo(3),
+    updated_at: daysAgo(3),
+    comments_count: 0
+  }
+];
+
+const MOCK_NOTES = [
+  {
+    id: 'note_001',
+    author_id: 'tm_005',
+    author_name: 'Luis Ortega',
+    target_type: 'subscriber',
+    target_id: 'sub_001',
+    target_label: 'Marcus Johnson',
+    body: 'Heads up: Marcus mentioned a second property sale coming in Q3. Loop Devon in before we lock the 1031 strategy — may want to stack identifications.',
+    mentions: ['tm_003'],
+    created_at: daysAgo(1),
+    updated_at: daysAgo(1),
+    pinned: true
+  },
+  {
+    id: 'note_002',
+    author_id: 'tm_003',
+    author_name: 'Devon Parker',
+    target_type: 'subscriber',
+    target_id: 'sub_003',
+    target_label: 'David Ramirez',
+    body: 'Pulled Stripe + PayPal export. Confirmed duplicate reporting on $82,400 of transactions. Drafting response to IRS — will need @Angela Reyes signature before send.',
+    mentions: ['tm_002'],
+    created_at: hoursAgo(3),
+    updated_at: hoursAgo(3),
+    pinned: false
+  },
+  {
+    id: 'note_003',
+    author_id: 'tm_004',
+    author_name: 'Maya Singh',
+    target_type: 'subscriber',
+    target_id: 'sub_002',
+    target_label: 'Sarah Chen',
+    body: 'Sarah is right on the fence for S-Corp (benefit ~$6,400/yr after payroll costs). Recommend we explicitly document the cost/benefit in the consult memo so she doesn\'t second-guess in year 2.',
+    mentions: [],
+    created_at: hoursAgo(8),
+    updated_at: hoursAgo(8),
+    pinned: false
+  },
+  {
+    id: 'note_004',
+    author_id: 'tm_002',
+    author_name: 'Angela Reyes',
+    target_type: 'call',
+    target_id: 'call_003',
+    target_label: 'CP2000 escalation call',
+    body: 'Transfer recorded cleanly. Client was calm — good. Next time let\'s prep a soft-handoff script for IRS letters so staff pickup feels seamless.',
+    mentions: [],
+    created_at: daysAgo(2),
+    updated_at: daysAgo(2),
+    pinned: false
+  },
+  {
+    id: 'note_005',
+    author_id: 'tm_001',
+    author_name: 'Winston Brown',
+    target_type: 'general',
+    target_id: null,
+    target_label: 'Team announcement',
+    body: 'Reminder: we are in PEAK_SEASON tone until April 15. Keep call summaries tight — 3 sentences max. Anything complex gets a task, not a long call note.',
+    mentions: [],
+    created_at: daysAgo(5),
+    updated_at: daysAgo(5),
+    pinned: true
+  }
+];
+
+const MOCK_SYSTEM_SETTINGS = {
+  auto_send_enabled: true,
+  voice_agent_enabled: true,
+  inbox_scan_interval_min: 5,
+  daily_reminder_hour: 9,
+  default_appointment_duration_min: 30,
+  require_2fa: false,
+  allow_invite_sign_up: true,
+  branding: {
+    agent_name: 'WBCPA Super Agent',
+    primary_color: '#c9a84c',
+    firm_name: 'WB CPA'
+  },
+  integrations: {
+    supabase:  { connected: false, last_checked: null,          label: 'Database',       required: true  },
+    bland_ai:  { connected: false, last_checked: null,          label: 'Voice (Bland AI)', required: true  },
+    twilio:    { connected: false, last_checked: null,          label: 'SMS (Twilio)',    required: true  },
+    openai:    { connected: false, last_checked: null,          label: 'AI (OpenAI)',     required: true  },
+    google:    { connected: false, last_checked: null,          label: 'Calendar + Gmail', required: true  },
+    stripe:    { connected: false, last_checked: null,          label: 'Billing (Stripe)', required: false }
+  },
+  api_keys: [
+    { id: 'key_001', label: 'Replit production', last_four: '••••7a2f', created_at: daysAgo(40),  last_used_at: minsAgo(3),   status: 'active' },
+    { id: 'key_002', label: 'Bland AI webhook',   last_four: '••••c194', created_at: daysAgo(40),  last_used_at: hoursAgo(2),  status: 'active' },
+    { id: 'key_003', label: 'Legacy CI runner',   last_four: '••••09bd', created_at: daysAgo(400), last_used_at: daysAgo(210), status: 'revoked' }
+  ]
+};
+
 module.exports = {
   MOCK_SUBSCRIBERS,
   MOCK_CALLS,
@@ -445,5 +766,10 @@ module.exports = {
   MOCK_EMAILS,
   MOCK_REVIEW_QUEUE,
   MOCK_CONFIG,
-  MOCK_CLIENTS
+  MOCK_CLIENTS,
+  MOCK_TEAM_MEMBERS,
+  MOCK_ACTIVITY_LOG,
+  MOCK_TASKS,
+  MOCK_NOTES,
+  MOCK_SYSTEM_SETTINGS
 };

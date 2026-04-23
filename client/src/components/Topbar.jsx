@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, matchPath } from 'react-router-dom';
 import SeasonPill from './SeasonPill.jsx';
+import RoleSwitcher from './RoleSwitcher.jsx';
 import { deployAgent } from '../lib/api.js';
 
 const TITLES = {
@@ -10,12 +11,28 @@ const TITLES = {
   '/dashboard/subscribers': { title: 'Subscribers', sub: 'Member management' },
   '/dashboard/appointments': { title: 'Appointments', sub: 'Calendar and availability' },
   '/dashboard/emails': { title: 'Emails', sub: 'AI-handled inbox and review queue' },
-  '/dashboard/setup': { title: 'Setup', sub: 'Connect your APIs in Replit Secrets' }
+  '/dashboard/setup': { title: 'Setup', sub: 'Connect your APIs in Replit Secrets' },
+  '/dashboard/admin': { title: 'Admin Panel', sub: 'Team, roles, collaboration, and system settings' },
+  '/dashboard/admin/team': { title: 'Team Members', sub: 'Invite, edit, and manage access' },
+  '/dashboard/admin/roles': { title: 'Roles & Permissions', sub: 'What each role can do' },
+  '/dashboard/admin/activity': { title: 'Activity Log', sub: 'Audit trail of every action taken' },
+  '/dashboard/admin/tasks': { title: 'Task Board', sub: 'Assign work across the team' },
+  '/dashboard/admin/collaboration': { title: 'Collaboration Hub', sub: 'Internal notes, mentions, and discussion' },
+  '/dashboard/admin/settings': { title: 'System Settings', sub: 'Integrations, API keys, and preferences' }
 };
+
+function resolveTitle(pathname) {
+  if (TITLES[pathname]) return TITLES[pathname];
+  const keys = Object.keys(TITLES).sort((a, b) => b.length - a.length);
+  for (const k of keys) {
+    if (matchPath({ path: k, end: false }, pathname)) return TITLES[k];
+  }
+  return TITLES['/dashboard'];
+}
 
 export default function Topbar() {
   const location = useLocation();
-  const meta = TITLES[location.pathname] || TITLES['/dashboard'];
+  const meta = resolveTitle(location.pathname);
   const [season, setSeason] = useState(null);
   const [deploying, setDeploying] = useState(false);
   const [deployMessage, setDeployMessage] = useState(null);
@@ -63,6 +80,7 @@ export default function Topbar() {
       </div>
       <div className="topbar-actions">
         {season && <SeasonPill seasonKey={season} />}
+        <RoleSwitcher />
         <button className="btn btn-ghost" onClick={() => window.location.reload()}>↻ Refresh</button>
         <button className="btn btn-gold" onClick={handleDeploy} disabled={deploying}>
           {deploying ? (

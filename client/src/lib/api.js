@@ -4,11 +4,18 @@
 // wrapped to never throw unhandled — returns { error } on failure.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { getCurrentDemoRole } from './roleContext.jsx';
+
 const BASE = '/api';
 
 function authHeaders() {
   const token = localStorage.getItem('wbcpa_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function demoHeaders() {
+  const role = getCurrentDemoRole();
+  return role ? { 'x-demo-role': role } : {};
 }
 
 async function request(path, options = {}) {
@@ -18,6 +25,7 @@ async function request(path, options = {}) {
       headers: {
         'Content-Type': 'application/json',
         ...authHeaders(),
+        ...demoHeaders(),
         ...(options.headers || {})
       }
     });
@@ -78,3 +86,51 @@ export const syncInbox = () => request('/emails/sync', { method: 'POST' });
 
 // ─── Clients ─────────────────────────────────────────────────────────────────
 export const getClients = () => request('/clients');
+
+// ─── Admin ───────────────────────────────────────────────────────────────────
+export const getMe = () => request('/admin/me');
+
+export const getTeam = () => request('/admin/team');
+export const inviteTeamMember = (data) =>
+  request('/admin/team', { method: 'POST', body: JSON.stringify(data) });
+export const updateTeamMember = (id, patch) =>
+  request(`/admin/team/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
+export const deactivateTeamMember = (id) =>
+  request(`/admin/team/${id}/deactivate`, { method: 'POST' });
+export const reactivateTeamMember = (id) =>
+  request(`/admin/team/${id}/reactivate`, { method: 'POST' });
+
+export const getRoles = () => request('/admin/roles');
+export const getActivity = (params = {}) => {
+  const qs = new URLSearchParams(params).toString();
+  return request(`/admin/activity${qs ? `?${qs}` : ''}`);
+};
+
+export const getTaskBoard = () => request('/admin/tasks?view=board');
+export const getTasks = (params = {}) => {
+  const qs = new URLSearchParams(params).toString();
+  return request(`/admin/tasks${qs ? `?${qs}` : ''}`);
+};
+export const createTask = (data) =>
+  request('/admin/tasks', { method: 'POST', body: JSON.stringify(data) });
+export const updateTask = (id, patch) =>
+  request(`/admin/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
+export const deleteTask = (id) =>
+  request(`/admin/tasks/${id}`, { method: 'DELETE' });
+
+export const getNotes = (params = {}) => {
+  const qs = new URLSearchParams(params).toString();
+  return request(`/admin/notes${qs ? `?${qs}` : ''}`);
+};
+export const createNote = (data) =>
+  request('/admin/notes', { method: 'POST', body: JSON.stringify(data) });
+export const pinNote = (id) =>
+  request(`/admin/notes/${id}/pin`, { method: 'POST' });
+export const deleteNote = (id) =>
+  request(`/admin/notes/${id}`, { method: 'DELETE' });
+
+export const getSettings = () => request('/admin/settings');
+export const updateSettings = (patch) =>
+  request('/admin/settings', { method: 'PATCH', body: JSON.stringify(patch) });
+export const rotateApiKey = (id) =>
+  request(`/admin/settings/api-keys/${id}/rotate`, { method: 'POST' });

@@ -9,6 +9,13 @@ import Subscribers from './pages/Subscribers.jsx';
 import Appointments from './pages/Appointments.jsx';
 import Emails from './pages/Emails.jsx';
 import Setup from './pages/Setup.jsx';
+import AdminPanel from './pages/admin/AdminPanel.jsx';
+import TeamMembers from './pages/admin/TeamMembers.jsx';
+import RolesMatrix from './pages/admin/RolesMatrix.jsx';
+import ActivityLog from './pages/admin/ActivityLog.jsx';
+import TaskBoard from './pages/admin/TaskBoard.jsx';
+import CollaborationHub from './pages/admin/CollaborationHub.jsx';
+import SystemSettings from './pages/admin/SystemSettings.jsx';
 
 function ProtectedLayout() {
   return (
@@ -34,6 +41,14 @@ export default function App() {
         <Route path="appointments" element={<Appointments />} />
         <Route path="emails" element={<Emails />} />
         <Route path="setup" element={<Setup />} />
+        <Route path="admin" element={<AdminPanel />}>
+          <Route path="team" element={<TeamMembers />} />
+          <Route path="roles" element={<RolesMatrix />} />
+          <Route path="activity" element={<ActivityLog />} />
+          <Route path="tasks" element={<TaskBoard />} />
+          <Route path="collaboration" element={<CollaborationHub />} />
+          <Route path="settings" element={<SystemSettings />} />
+        </Route>
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
