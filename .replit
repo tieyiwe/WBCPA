@@ -1,0 +1,24 @@
+run = "npm start"
+entrypoint = "server/index.js"
+modules = ["nodejs-20"]
+
+hidden = [".config", "package-lock.json", "client/dist", "node_modules"]
+
+[nix]
+channel = "stable-22_11"
+
+[env]
+NODE_ENV = "production"
+
+[deployment]
+run = ["sh", "-c", "npm start"]
+deploymentTarget = "cloudrun"
+build = ["sh", "-c", "npm install && npm run build"]
+
+[[ports]]
+localPort = 3000
+externalPort = 80
+
+[[ports]]
+localPort = 5173
+externalPort = 3001
