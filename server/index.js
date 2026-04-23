@@ -8,6 +8,7 @@ require('dotenv').config();
 
 const path = require('path');
 const fs = require('fs');
+const { execSync } = require('child_process');
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
@@ -54,6 +55,21 @@ app.get('/health', (req, res) => {
 
 const DIST_DIR = path.resolve(__dirname, '../client/dist');
 const INDEX_HTML = path.join(DIST_DIR, 'index.html');
+const REPO_ROOT = path.resolve(__dirname, '..');
+
+function ensureClientBuilt() {
+  if (fs.existsSync(INDEX_HTML)) return true;
+  console.log('[Boot] client/dist not found — running `vite build` now…');
+  try {
+    execSync('npx vite build', { cwd: REPO_ROOT, stdio: 'inherit' });
+    return fs.existsSync(INDEX_HTML);
+  } catch (err) {
+    console.warn('[Boot] Vite build failed:', err.message);
+    return false;
+  }
+}
+
+ensureClientBuilt();
 
 if (fs.existsSync(INDEX_HTML)) {
   app.use(express.static(DIST_DIR));
@@ -61,8 +77,8 @@ if (fs.existsSync(INDEX_HTML)) {
     res.sendFile(INDEX_HTML);
   });
 } else {
-  // Helpful fallback when running for the first time before `npm run build`.
-  app.get('/', (req, res) => {
+  // If the build genuinely cannot run, surface a helpful page instead of crashing.
+  app.get(/^(?!\/api\/).*/, (req, res) => {
     res.status(200).send(`
       <!doctype html>
       <html>
@@ -75,8 +91,8 @@ if (fs.existsSync(INDEX_HTML)) {
         </head>
         <body>
           <h1 style="color:#c9a84c">WBCPA Super Agent — API is running</h1>
-          <p>The React dashboard hasn't been built yet. Run:</p>
-          <p><code>npm run build</code></p>
+          <p>The React dashboard couldn't be built automatically. From the Replit shell, run:</p>
+          <p><code>npm install && npm run build</code></p>
           <p>Then reload this page.</p>
           <p>API health: <a href="/health">/health</a></p>
         </body>

@@ -7,9 +7,6 @@ hidden = [".config", "package-lock.json", "client/dist", "node_modules"]
 [nix]
 channel = "stable-22_11"
 
-[env]
-NODE_ENV = "production"
-
 [deployment]
 run = ["sh", "-c", "npm start"]
 deploymentTarget = "cloudrun"
