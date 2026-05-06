@@ -64,9 +64,15 @@ export const updateSubscriber = (id, data) =>
 // ─── Voice ───────────────────────────────────────────────────────────────────
 export const getCalls = (filter) =>
   request(`/voice/calls${filter ? `?filter=${encodeURIComponent(filter)}` : ''}`);
+export const getCallDetail = (id) => request(`/voice/calls/${id}`);
 export const getVoiceStats = () => request('/voice/stats');
 export const getAgentPrompt = () => request('/voice/prompt');
+export const getConnectionStatus = () => request('/voice/connection');
 export const deployAgent = () => request('/voice/deploy-agent', { method: 'POST' });
+export const requestCallback = (callId, data = {}) =>
+  request(`/voice/calls/${callId}/callback`, { method: 'POST', body: JSON.stringify(data) });
+export const dialOutbound = (data) =>
+  request('/voice/dial', { method: 'POST', body: JSON.stringify(data) });
 
 // ─── Calendar ────────────────────────────────────────────────────────────────
 export const getAppointments = () => request('/calendar');
@@ -134,3 +140,18 @@ export const updateSettings = (patch) =>
   request('/admin/settings', { method: 'PATCH', body: JSON.stringify(patch) });
 export const rotateApiKey = (id) =>
   request(`/admin/settings/api-keys/${id}/rotate`, { method: 'POST' });
+
+export const updateProfile = (patch) =>
+  request('/admin/profile', { method: 'PATCH', body: JSON.stringify(patch) });
+export const getMyWork = () => request('/admin/my-work');
+
+// ─── Escalations ─────────────────────────────────────────────────────────────
+export const getEscalations = (scope = 'active') =>
+  request(`/escalations?scope=${encodeURIComponent(scope)}`);
+export const getEscalationSummary = () => request('/escalations/summary');
+export const claimEscalation = (id) =>
+  request(`/escalations/${id}/claim`, { method: 'POST' });
+export const releaseEscalation = (id) =>
+  request(`/escalations/${id}/release`, { method: 'POST' });
+export const resolveEscalation = (id, resolution_notes) =>
+  request(`/escalations/${id}/resolve`, { method: 'POST', body: JSON.stringify({ resolution_notes }) });

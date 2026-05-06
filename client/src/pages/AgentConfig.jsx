@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { getAgentPrompt, getVoiceStats, deployAgent } from '../lib/api.js';
 import SeasonPill from '../components/SeasonPill.jsx';
+import BlandConnection from '../components/BlandConnection.jsx';
 import { formatDuration } from '../lib/utils.js';
 
 const CAPABILITIES = [
@@ -80,6 +81,10 @@ export default function AgentConfig() {
                 : `Deploy failed: ${deployResult.error}`}
           </div>
         )}
+      </div>
+
+      <div className="mt-lg">
+        <BlandConnection />
       </div>
 
       <div className="grid-2 mt-lg">

@@ -9,6 +9,8 @@ import Subscribers from './pages/Subscribers.jsx';
 import Appointments from './pages/Appointments.jsx';
 import Emails from './pages/Emails.jsx';
 import Setup from './pages/Setup.jsx';
+import Profile from './pages/Profile.jsx';
+import Escalations from './pages/Escalations.jsx';
 import AdminPanel from './pages/admin/AdminPanel.jsx';
 import TeamMembers from './pages/admin/TeamMembers.jsx';
 import RolesMatrix from './pages/admin/RolesMatrix.jsx';
@@ -40,6 +42,8 @@ export default function App() {
         <Route path="subscribers" element={<Subscribers />} />
         <Route path="appointments" element={<Appointments />} />
         <Route path="emails" element={<Emails />} />
+        <Route path="escalations" element={<Escalations />} />
+        <Route path="profile" element={<Profile />} />
         <Route path="setup" element={<Setup />} />
         <Route path="admin" element={<AdminPanel />}>
           <Route path="team" element={<TeamMembers />} />

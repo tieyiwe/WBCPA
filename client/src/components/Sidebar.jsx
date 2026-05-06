@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { NavLink } from 'react-router-dom';
-import { getEmailQueue } from '../lib/api.js';
+import { NavLink, Link } from 'react-router-dom';
+import { getEmailQueue, getEscalationSummary, getMe } from '../lib/api.js';
 import { SEASON_LABELS } from './SeasonPill.jsx';
 import { useRole } from '../lib/roleContext.jsx';
 import RoleBadge from './RoleBadge.jsx';
+import { initials } from '../lib/utils.js';
 
 const NAV = [
   {
@@ -16,7 +17,15 @@ const NAV = [
     label: 'Voice Agent',
     items: [
       { to: '/dashboard/calls', icon: '☏', title: 'Call Log', permission: 'calls.view' },
-      { to: '/dashboard/agent', icon: '✦', title: 'Agent Config', permission: 'agent.view' }
+      { to: '/dashboard/agent', icon: '✦', title: 'Agent + Bland Connection', permission: 'agent.view' }
+    ]
+  },
+  {
+    label: 'My Work',
+    items: [
+      { to: '/dashboard/escalations', icon: '⚠', title: 'Escalations', badgeKey: 'openEscalations', permission: 'emails.view' },
+      { to: '/dashboard/admin/tasks', icon: '▤', title: 'Tasks', permission: 'tasks.view' },
+      { to: '/dashboard/profile', icon: '◐', title: 'My Profile', permission: 'dashboard.view' }
     ]
   },
   {
@@ -37,7 +46,6 @@ const NAV = [
     items: [
       { to: '/dashboard/admin/team',          icon: '◉', title: 'Team',          permission: 'team.view' },
       { to: '/dashboard/admin/roles',         icon: '⚑', title: 'Roles',         permission: 'roles.view' },
-      { to: '/dashboard/admin/tasks',         icon: '▤', title: 'Tasks',         permission: 'tasks.view' },
       { to: '/dashboard/admin/collaboration', icon: '✎', title: 'Collaboration', permission: 'notes.view' },
       { to: '/dashboard/admin/activity',      icon: '◔', title: 'Activity Log',  permission: 'activity.view' },
       { to: '/dashboard/admin/settings',      icon: '⚙', title: 'Settings',      permission: 'system.settings.view' }
@@ -55,13 +63,24 @@ export default function Sidebar() {
   const { role, can } = useRole();
   const [season, setSeason] = useState(null);
   const [reviewCount, setReviewCount] = useState(0);
+  const [openEscalations, setOpenEscalations] = useState(0);
+  const [profile, setProfile] = useState(null);
 
   useEffect(() => {
     let mounted = true;
-    (async () => {
-      const queue = await getEmailQueue();
-      if (mounted && queue?.queue) setReviewCount(queue.queue.length);
-    })();
+
+    async function loadAll() {
+      const [queue, escSummary, me] = await Promise.all([
+        getEmailQueue(),
+        getEscalationSummary(),
+        getMe()
+      ]);
+      if (!mounted) return;
+      if (queue?.queue) setReviewCount(queue.queue.length);
+      if (escSummary?.summary) setOpenEscalations(escSummary.summary.open);
+      if (me?.profile) setProfile(me.profile);
+    }
+    loadAll();
 
     (async () => {
       try {
@@ -71,10 +90,11 @@ export default function Sidebar() {
       } catch { /* ignore */ }
     })();
 
-    return () => { mounted = false; };
-  }, []);
+    const interval = setInterval(loadAll, 30000);
+    return () => { mounted = false; clearInterval(interval); };
+  }, [role]);
 
-  const badges = { reviewCount };
+  const badges = { reviewCount, openEscalations };
 
   return (
     <aside className="sidebar">
@@ -100,7 +120,12 @@ export default function Sidebar() {
                   <span style={{ width: 18, textAlign: 'center', color: 'var(--gold)' }}>{item.icon}</span>
                   <span>{item.title}</span>
                   {item.badgeKey && badges[item.badgeKey] > 0 && (
-                    <span className="badge">{badges[item.badgeKey]}</span>
+                    <span className="badge"
+                          style={item.badgeKey === 'openEscalations'
+                            ? { background: 'rgba(248,113,113,0.15)', color: 'var(--error)', borderColor: 'rgba(248,113,113,0.35)' }
+                            : undefined}>
+                      {badges[item.badgeKey]}
+                    </span>
                   )}
                 </NavLink>
               ))}
@@ -110,10 +135,27 @@ export default function Sidebar() {
       </nav>
 
       <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Role</span>
-          <RoleBadge role={role} />
-        </div>
+        {profile && (
+          <Link to="/dashboard/profile" style={{
+            display: 'flex', alignItems: 'center', gap: 10, padding: 8,
+            borderRadius: 8, textDecoration: 'none', color: 'inherit',
+            border: '1px solid var(--border)', background: 'var(--bg-elev-2)'
+          }}>
+            <div className="avatar" style={{
+              width: 32, height: 32, fontSize: '0.78rem',
+              background: profile.avatar_color || '#555', color: '#0a0d14', flex: 'none'
+            }}>{initials(profile.name)}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '0.84rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {profile.name}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                {profile.title || profile.email}
+              </div>
+            </div>
+            <RoleBadge role={role} />
+          </Link>
+        )}
         <div>
           <span className="status-dot" />
           Super Agent — {season ? (SEASON_LABELS[season] || 'Online') : 'Online'}

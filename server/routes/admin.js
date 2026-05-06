@@ -16,12 +16,56 @@ router.use(attachActor);
 // ─── Whoami / me ────────────────────────────────────────────────────────────
 router.get('/me', (req, res) => {
   const role = ROLES[req.actor.role] || null;
+  const member = svc.getTeamMember(req.actor.id);
   res.json({
     actor: req.actor,
     role_detail: role,
+    profile: member,
     permissions: Object.entries(require('../services/permissions').PERMISSIONS)
       .filter(([, roles]) => roles.includes(req.actor.role))
       .map(([key]) => key)
+  });
+});
+
+// ─── Self-service profile ───────────────────────────────────────────────────
+router.patch('/profile', (req, res) => {
+  try {
+    const member = svc.updateOwnProfile(req.actor.id, req.body || {});
+    res.json({ profile: member });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// ─── My Work — workspace summary for the current actor ─────────────────────
+router.get('/my-work', (req, res) => {
+  const actorId = req.actor.id;
+  const allTasks = svc.listTasks();
+  const myTasks = allTasks.filter((t) => t.assignee_id === actorId);
+  const myOpenTasks = myTasks.filter((t) => t.status !== 'done');
+  const myActivity = svc.listActivity({ actor_id: actorId, limit: 20 });
+
+  // Pull escalations the actor has claimed.
+  let myEscalations = [];
+  let openEscalationsCount = 0;
+  try {
+    const escSvc = require('../services/escalationService');
+    myEscalations = escSvc.listEscalations({ scope: 'mine', claimed_by_id: actorId });
+    openEscalationsCount = escSvc.summary({ actorId }).open;
+  } catch { /* ignore */ }
+
+  res.json({
+    actor: req.actor,
+    counts: {
+      open_tasks: myOpenTasks.length,
+      done_tasks_30d: myTasks.filter((t) => t.status === 'done' && t.updated_at && (Date.now() - new Date(t.updated_at)) < 30 * 86400000).length,
+      claimed_escalations: myEscalations.length,
+      pool_open_escalations: openEscalationsCount,
+      recent_actions: myActivity.length
+    },
+    open_tasks: myOpenTasks.slice(0, 5),
+    claimed_escalations: myEscalations,
+    recent_activity: myActivity.slice(0, 10)
   });
 });
 

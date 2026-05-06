@@ -177,6 +177,104 @@ async function verifySubscriber(phone, email) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Outbound callback — Bland places a call back to a customer using the deployed
+// agent. The agent picks up where the previous call left off using the
+// `previous_summary` and `topic` task variables.
+// ─────────────────────────────────────────────────────────────────────────────
+async function placeCallback({ phone, clientName, topic, previousSummary, requestedBy }) {
+  if (!phone) {
+    return { ok: false, error: 'Phone number is required to call back.' };
+  }
+  if (!BLAND_API_KEY) {
+    console.log(`[SuperAgent MOCK] would call back ${phone} re: "${(topic || '').slice(0, 60)}" requested by ${requestedBy?.name || 'staff'}`);
+    return {
+      ok: true,
+      mock: true,
+      message: `Mock: would dial ${phone} now. Add BLAND_API_KEY to make this live.`,
+      phone,
+      topic
+    };
+  }
+
+  const season = await getCurrentSeason();
+  const taskBriefing = [
+    `You are calling ${clientName || 'the client'} back at the request of WBCPA staff (${requestedBy?.name || 'staff member'}).`,
+    topic ? `The reason for the callback: ${topic}.` : null,
+    previousSummary ? `Previous call summary you should reference: ${previousSummary}` : null,
+    'Open warmly: identify yourself as the WBCPA Super Agent calling them back. Confirm it is a good time. Use your existing tools (CheckAvailability, BookAppointment, SendSMSSummary) as needed.'
+  ].filter(Boolean).join(' ');
+
+  try {
+    const payload = {
+      phone_number: phone,
+      task: taskBriefing,
+      voice: 'june',
+      record: true,
+      max_duration: 12,
+      webhook: `${REPLIT_URL}/api/webhooks/bland/call-ended`,
+      metadata: {
+        outbound: true,
+        requested_by_id: requestedBy?.id,
+        requested_by_name: requestedBy?.name,
+        topic,
+        season
+      },
+      ...(BLAND_AGENT_ID ? { agent_id: BLAND_AGENT_ID } : {}),
+      tools: buildToolSet()
+    };
+
+    const response = await axios({
+      url: 'https://api.bland.ai/v1/calls',
+      method: 'POST',
+      headers: {
+        'Authorization': BLAND_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      data: payload,
+      timeout: 15000
+    });
+
+    return {
+      ok: true,
+      call_id: response.data?.call_id || response.data?.id,
+      status: response.data?.status || 'queued',
+      phone,
+      topic
+    };
+  } catch (err) {
+    console.warn('[SuperAgent] placeCallback failed:', err.message);
+    return { ok: false, error: err.response?.data?.error || err.message };
+  }
+}
+
+function getConnectionStatus() {
+  return {
+    bland: {
+      configured: Boolean(BLAND_API_KEY),
+      agent_id: BLAND_AGENT_ID || null,
+      agent_id_set: Boolean(BLAND_AGENT_ID)
+    },
+    twilio: {
+      configured: Boolean(twilioClient && TWILIO_PHONE_NUMBER),
+      phone_number: TWILIO_PHONE_NUMBER || null
+    },
+    webhooks: {
+      call_ended: `${REPLIT_URL}/api/webhooks/bland/call-ended`,
+      verify_subscriber: `${REPLIT_URL}/api/subscribers/verify`,
+      check_availability: `${REPLIT_URL}/api/calendar/availability`,
+      book_appointment: `${REPLIT_URL}/api/calendar/book`,
+      send_sms: `${REPLIT_URL}/api/voice/sms`
+    },
+    staff: {
+      transfer_phone: WBCPA_STAFF_PHONE
+    },
+    base_url: REPLIT_URL,
+    requires_internal_key: Boolean(INTERNAL_API_KEY && INTERNAL_API_KEY !== 'dev-internal-key'),
+    internal_key_header: 'x-api-key'
+  };
+}
+
 async function sendSMS(to, summary, appointmentDetails) {
   if (!twilioClient || !TWILIO_PHONE_NUMBER) {
     console.log(`[SMS MOCK] to=${to} summary="${(summary || '').slice(0, 80)}..." apt=${appointmentDetails || 'none'}`);
@@ -385,5 +483,7 @@ module.exports = {
   processCallWebhook,
   getAgentStats,
   getRecentCalls,
-  buildToolSet
+  buildToolSet,
+  placeCallback,
+  getConnectionStatus
 };

@@ -135,6 +135,40 @@ function updateTeamMember(id, patch, actor) {
   return member;
 }
 
+// Self-service profile editing — actors edit their own record but cannot
+// change role or status from this endpoint (those require team.edit).
+function updateOwnProfile(actorId, patch) {
+  const member = state.team.find((m) => m.id === actorId);
+  if (!member) {
+    const err = new Error('Your profile record was not found.');
+    err.status = 404;
+    throw err;
+  }
+  const writable = ['name', 'phone', 'title', 'bio', 'timezone', 'pronouns', 'avatar_color'];
+  const changed = [];
+  for (const key of writable) {
+    if (patch[key] !== undefined && patch[key] !== member[key]) {
+      member[key] = patch[key];
+      changed.push(key);
+    }
+  }
+  if (patch.notification_prefs && typeof patch.notification_prefs === 'object') {
+    member.notification_prefs = { ...(member.notification_prefs || {}), ...patch.notification_prefs };
+    changed.push('notification_prefs');
+  }
+  if (changed.length) {
+    logActivity({
+      actor: { id: member.id, name: member.name, role: member.role },
+      action: 'profile.updated',
+      target_type: 'team_member',
+      target_id: member.id,
+      target_label: member.name,
+      summary: `Self-updated ${changed.join(', ')}`
+    });
+  }
+  return member;
+}
+
 function deactivateTeamMember(id, actor) {
   return updateTeamMember(id, { status: 'deactivated' }, actor);
 }
@@ -459,6 +493,7 @@ module.exports = {
   getTeamMember,
   inviteTeamMember,
   updateTeamMember,
+  updateOwnProfile,
   deactivateTeamMember,
   reactivateTeamMember,
   // tasks

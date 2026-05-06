@@ -12,6 +12,8 @@ const TITLES = {
   '/dashboard/appointments': { title: 'Appointments', sub: 'Calendar and availability' },
   '/dashboard/emails': { title: 'Emails', sub: 'AI-handled inbox and review queue' },
   '/dashboard/setup': { title: 'Setup', sub: 'Connect your APIs in Replit Secrets' },
+  '/dashboard/profile': { title: 'My Profile', sub: 'Personal info, notification preferences, and your workspace summary' },
+  '/dashboard/escalations': { title: 'Escalations', sub: 'Calls and emails the AI handed off to a human — accept and take over' },
   '/dashboard/admin': { title: 'Admin Panel', sub: 'Team, roles, collaboration, and system settings' },
   '/dashboard/admin/team': { title: 'Team Members', sub: 'Invite, edit, and manage access' },
   '/dashboard/admin/roles': { title: 'Roles & Permissions', sub: 'What each role can do' },
