@@ -27,6 +27,7 @@ export default function Escalations() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pendingId, setPendingId] = useState(null);
+  const [recentlyAcceptedId, setRecentlyAcceptedId] = useState(null);
 
   if (!can('emails.view') && !can('calls.view')) return <AccessDenied permission="emails.view" />;
 
@@ -50,8 +51,14 @@ export default function Escalations() {
     setPendingId(item.id);
     const resp = await claimEscalation(item.id);
     setPendingId(null);
-    if (resp?.error) setError(resp.error);
-    else refresh();
+    if (resp?.error) {
+      setError(resp.error);
+      return;
+    }
+    // Flash the accepted state for ~1.5s before the row re-renders as claimed.
+    setRecentlyAcceptedId(item.id);
+    await refresh();
+    setTimeout(() => setRecentlyAcceptedId((id) => (id === item.id ? null : id)), 1500);
   }
 
   async function handleRelease(item) {
@@ -142,6 +149,7 @@ export default function Escalations() {
           can={can}
           role={role}
           pending={pendingId === item.id}
+          recentlyAccepted={recentlyAcceptedId === item.id}
           onAccept={handleAccept}
           onRelease={handleRelease}
           onResolve={handleResolve}
@@ -166,13 +174,13 @@ function SummaryPill({ label, value, color }) {
   );
 }
 
-function EscalationCard({ item, can, role, pending, onAccept, onRelease, onResolve, onCallBack }) {
+function EscalationCard({ item, can, role, pending, recentlyAccepted, onAccept, onRelease, onResolve, onCallBack }) {
   const [showResolve, setShowResolve] = useState(false);
   const [notes, setNotes] = useState('');
   const isResolved = item.status === 'resolved';
   const isClaimed = item.status === 'claimed';
   const accentColor = isResolved ? 'var(--success)' :
-                      isClaimed ? 'var(--info)' :
+                      isClaimed ? 'var(--success)' :
                       item.urgency === 'high' ? 'var(--error)' : 'var(--warning)';
 
   return (
@@ -189,7 +197,9 @@ function EscalationCard({ item, can, role, pending, onAccept, onRelease, onResol
             <span className={`badge ${URGENCY_BADGE[item.urgency]}`}>{item.urgency} urgency</span>
             <span className="badge badge-muted">{item.type}</span>
             {isClaimed && (
-              <span className="badge badge-blue">In progress · {item.claimed_by_name}</span>
+              <span className="badge badge-green">
+                ✓ Accepted by {item.claimed_by_name}
+              </span>
             )}
             {isResolved && (
               <span className="badge badge-green">Resolved by {item.resolved_by_name}</span>
@@ -246,8 +256,17 @@ function EscalationCard({ item, can, role, pending, onAccept, onRelease, onResol
         {!isResolved && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 160, alignItems: 'stretch' }}>
             {item.status === 'open' && can('emails.respond') && (
-              <button className="btn btn-gold" onClick={() => onAccept(item)} disabled={pending}>
-                {pending ? 'Working…' : '✓ Accept & take over'}
+              <button
+                className={`btn ${recentlyAccepted ? 'btn-accepted' : 'btn-gold btn-accept-blink'}`}
+                onClick={() => onAccept(item)}
+                disabled={pending}
+              >
+                {pending ? 'Accepting…' : recentlyAccepted ? '✓ Accepted!' : '✓ Accept & take over'}
+              </button>
+            )}
+            {recentlyAccepted && isClaimed && (
+              <button className="btn btn-accepted" disabled>
+                ✓ Accepted!
               </button>
             )}
 

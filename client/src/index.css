@@ -207,6 +207,34 @@ code, pre {
   50% { opacity: 0.55; }
 }
 
+/* ─── Accept-button blink (Escalations) ─────────────────────────────────── */
+.btn-accept-blink {
+  position: relative;
+  animation: accept-blink 1.4s ease-in-out infinite;
+}
+@keyframes accept-blink {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(201, 168, 76, 0.55), 0 0 16px rgba(201, 168, 76, 0.18);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(201, 168, 76, 0), 0 0 26px rgba(201, 168, 76, 0.45);
+    transform: scale(1.025);
+  }
+}
+
+.btn-accepted {
+  background: var(--success) !important;
+  color: #0a0d14 !important;
+  border-color: var(--success) !important;
+  box-shadow: 0 0 0 4px rgba(45, 212, 170, 0.18), 0 0 22px rgba(45, 212, 170, 0.35) !important;
+  animation: accepted-flash 0.6s ease-out;
+}
+@keyframes accepted-flash {
+  0%   { transform: scale(1.06); box-shadow: 0 0 0 12px rgba(45,212,170,0.35), 0 0 30px rgba(45,212,170,0.6); }
+  100% { transform: scale(1);    box-shadow: 0 0 0 4px rgba(45,212,170,0.18), 0 0 22px rgba(45,212,170,0.35); }
+}
+
 /* ─── Topbar ──────────────────────────────────────────────────────────────── */
 .topbar {
   position: sticky;
