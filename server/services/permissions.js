@@ -89,7 +89,16 @@ const PERMISSIONS = {
   'api_keys.view':         ['owner', 'admin'],
   'api_keys.rotate':       ['owner'],
   'billing.view':          ['owner'],
-  'billing.manage':        ['owner']
+  'billing.manage':        ['owner'],
+
+  // Tax document workflow
+  'taxdocs.view':          ['owner', 'admin', 'manager', 'staff', 'viewer'],
+  'taxdocs.upload':        ['owner', 'admin', 'manager', 'staff'],
+  'taxdocs.review':        ['owner', 'admin', 'manager', 'staff'],
+  'taxdocs.approve':       ['owner', 'admin', 'manager'],
+
+  // Rich AI agent
+  'rich.use':              ['owner', 'admin', 'manager', 'staff']
 };
 
 function hasPermission(role, key) {

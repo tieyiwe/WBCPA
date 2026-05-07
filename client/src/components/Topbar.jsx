@@ -20,7 +20,9 @@ const TITLES = {
   '/dashboard/admin/activity': { title: 'Activity Log', sub: 'Audit trail of every action taken' },
   '/dashboard/admin/tasks': { title: 'Task Board', sub: 'Assign work across the team' },
   '/dashboard/admin/collaboration': { title: 'Collaboration Hub', sub: 'Internal notes, mentions, and discussion' },
-  '/dashboard/admin/settings': { title: 'System Settings', sub: 'Integrations, API keys, and preferences' }
+  '/dashboard/admin/settings': { title: 'System Settings', sub: 'Integrations, API keys, and preferences' },
+  '/dashboard/taxdocs': { title: 'Tax Documents', sub: 'Upload, review, approve, e-sign, and file tax documents' },
+  '/dashboard/rich': { title: 'Rich — AI Tax Advisor', sub: 'Ask anything about clients, tax strategy, IRS guidance, or documents' }
 };
 
 function resolveTitle(pathname) {

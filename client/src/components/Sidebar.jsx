@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, Link } from 'react-router-dom';
-import { getEmailQueue, getEscalationSummary, getMe } from '../lib/api.js';
+import { getEmailQueue, getEscalationSummary, getMe, getTaxDocSummary } from '../lib/api.js';
 import { SEASON_LABELS } from './SeasonPill.jsx';
 import { useRole } from '../lib/roleContext.jsx';
 import RoleBadge from './RoleBadge.jsx';
@@ -24,8 +24,15 @@ const NAV = [
     label: 'My Work',
     items: [
       { to: '/dashboard/escalations', icon: '⚠', title: 'Escalations', badgeKey: 'openEscalations', permission: 'emails.view' },
+      { to: '/dashboard/taxdocs', icon: '◧', title: 'Tax Documents', badgeKey: 'pendingDocs', permission: 'taxdocs.view' },
       { to: '/dashboard/admin/tasks', icon: '▤', title: 'Tasks', permission: 'tasks.view' },
       { to: '/dashboard/profile', icon: '◐', title: 'My Profile', permission: 'dashboard.view' }
+    ]
+  },
+  {
+    label: 'AI Tools',
+    items: [
+      { to: '/dashboard/rich', icon: '◈', title: 'Rich — AI Advisor', permission: 'rich.use' }
     ]
   },
   {
@@ -64,21 +71,24 @@ export default function Sidebar() {
   const [season, setSeason] = useState(null);
   const [reviewCount, setReviewCount] = useState(0);
   const [openEscalations, setOpenEscalations] = useState(0);
+  const [pendingDocs, setPendingDocs] = useState(0);
   const [profile, setProfile] = useState(null);
 
   useEffect(() => {
     let mounted = true;
 
     async function loadAll() {
-      const [queue, escSummary, me] = await Promise.all([
+      const [queue, escSummary, me, docSum] = await Promise.all([
         getEmailQueue(),
         getEscalationSummary(),
-        getMe()
+        getMe(),
+        getTaxDocSummary()
       ]);
       if (!mounted) return;
       if (queue?.queue) setReviewCount(queue.queue.length);
       if (escSummary?.summary) setOpenEscalations(escSummary.summary.open);
       if (me?.profile) setProfile(me.profile);
+      if (docSum?.summary) setPendingDocs(docSum.summary.pending_action || 0);
     }
     loadAll();
 
@@ -94,7 +104,7 @@ export default function Sidebar() {
     return () => { mounted = false; clearInterval(interval); };
   }, [role]);
 
-  const badges = { reviewCount, openEscalations };
+  const badges = { reviewCount, openEscalations, pendingDocs };
 
   return (
     <aside className="sidebar">

@@ -155,3 +155,34 @@ export const releaseEscalation = (id) =>
   request(`/escalations/${id}/release`, { method: 'POST' });
 export const resolveEscalation = (id, resolution_notes) =>
   request(`/escalations/${id}/resolve`, { method: 'POST', body: JSON.stringify({ resolution_notes }) });
+
+// ─── Tax Documents ────────────────────────────────────────────────────────────
+export const getTaxDocs = (params = {}) => {
+  const qs = new URLSearchParams(params).toString();
+  return request(`/taxdocs${qs ? `?${qs}` : ''}`);
+};
+export const getTaxDoc = (id) => request(`/taxdocs/${id}`);
+export const getTaxDocSummary = () => request('/taxdocs/summary');
+export const uploadTaxDoc = (data) =>
+  request('/taxdocs', { method: 'POST', body: JSON.stringify(data) });
+export const processTaxDoc = (id) =>
+  request(`/taxdocs/${id}/process`, { method: 'POST' });
+export const approveTaxDoc = (id) =>
+  request(`/taxdocs/${id}/approve`, { method: 'POST' });
+export const rejectTaxDoc = (id, reason) =>
+  request(`/taxdocs/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) });
+export const sendTaxDocForSignature = (id) =>
+  request(`/taxdocs/${id}/send-for-signature`, { method: 'POST' });
+export const recordTaxDocSigned = (id) =>
+  request(`/taxdocs/${id}/record-signed`, { method: 'POST' });
+export const markTaxDocFiled = (id) =>
+  request(`/taxdocs/${id}/mark-filed`, { method: 'POST' });
+export const addTaxDocNote = (id, note) =>
+  request(`/taxdocs/${id}/note`, { method: 'POST', body: JSON.stringify({ note }) });
+
+// ─── Rich AI Agent ─────────────────────────────────────────────────────────────
+export const richChat = (message) =>
+  request('/rich/chat', { method: 'POST', body: JSON.stringify({ message }) });
+export const richClearSession = () =>
+  request('/rich/chat', { method: 'DELETE' });
+export const richGetSession = () => request('/rich/session');
