@@ -1,177 +1,153 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Rich AI Agent Service
-// In-app AI assistant for WBCPA staff. Powered by OpenAI GPT-4o.
-// Has function-calling access to all app data: subscribers, calls, emails,
-// appointments, escalations, tax documents, and tasks.
-// Falls back to a canned stub when OPENAI_API_KEY is not configured.
+// In-app AI tax advisor for WBCPA staff. Powered by Claude Opus 4.7 via the
+// Anthropic SDK with adaptive thinking, prompt caching, and tool use.
+// Falls back to a canned demo reply when ANTHROPIC_API_KEY is not configured.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const axios = require('axios');
+const Anthropic = require('@anthropic-ai/sdk').default || require('@anthropic-ai/sdk');
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_MODEL = 'gpt-4o';
+// Reuse the org-wide ANTHROPIC_API_KEY by default. If a workspace wants Rich
+// usage on a separate billing key, set RICH_ANTHROPIC_API_KEY in Secrets and
+// we'll prefer that.
+const ANTHROPIC_API_KEY = process.env.RICH_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
+// Sonnet 4.6 handles tool-use + adaptive thinking and is ~40% the cost of Opus
+// per token. Override with RICH_MODEL=claude-opus-4-7 in Secrets if needed.
+const CLAUDE_MODEL = process.env.RICH_MODEL || 'claude-sonnet-4-6';
+
+const client = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
 
 // ── In-memory conversation store (per actor) ─────────────────────────────────
-// Keyed by actor.id. Each value: { messages: [...], focusedClientId, createdAt }
+// Keyed by actor.id. Each value: { messages: [...], createdAt }
 const sessions = {};
 
 function getSession(actorId) {
   if (!sessions[actorId]) {
-    sessions[actorId] = { messages: [], focusedClientId: null, createdAt: new Date().toISOString() };
+    sessions[actorId] = { messages: [], createdAt: new Date().toISOString() };
   }
   return sessions[actorId];
 }
 
 function clearSession(actorId) {
-  sessions[actorId] = { messages: [], focusedClientId: null, createdAt: new Date().toISOString() };
+  sessions[actorId] = { messages: [], createdAt: new Date().toISOString() };
   return { ok: true };
 }
 
-// ── Tool/function definitions for OpenAI function calling ────────────────────
+// ── Tool definitions for Claude function calling ─────────────────────────────
 
 const TOOLS = [
   {
-    type: 'function',
-    function: {
-      name: 'get_client_profile',
-      description: 'Get detailed profile and history for a specific subscriber/client by ID or name.',
-      parameters: {
-        type: 'object',
-        properties: {
-          client_id: { type: 'string', description: 'The client/subscriber ID (e.g. sub_001)' },
-          client_name: { type: 'string', description: 'Partial name search if ID not known' }
-        }
+    name: 'get_client_profile',
+    description: 'Get detailed profile and history for a specific subscriber/client by ID or name. Returns the client object plus their recent calls, tax documents, and appointments.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        client_id: { type: 'string', description: 'The client/subscriber ID (e.g. sub_001)' },
+        client_name: { type: 'string', description: 'Partial name search if ID not known' }
       }
     }
   },
   {
-    type: 'function',
-    function: {
-      name: 'search_clients',
-      description: 'Search clients/subscribers by name, email, tier, or keyword.',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: 'Name, email, or keyword to search' },
-          tier: { type: 'string', enum: ['vip', 'premium', 'standard', 'trial'], description: 'Filter by subscription tier' }
-        },
-        required: ['query']
+    name: 'search_clients',
+    description: 'Search clients/subscribers by name, email, tier, or keyword in their notes.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Name, email, or keyword to search' },
+        tier: { type: 'string', enum: ['vip', 'premium', 'standard', 'trial'], description: 'Filter by subscription tier' }
+      },
+      required: ['query']
+    }
+  },
+  {
+    name: 'get_call_history',
+    description: 'Get recent call logs, optionally filtered by client.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        client_id: { type: 'string', description: 'Filter by client ID' },
+        limit: { type: 'number', description: 'Max results (default 10)' }
       }
     }
   },
   {
-    type: 'function',
-    function: {
-      name: 'get_call_history',
-      description: 'Get recent call logs, optionally filtered by client.',
-      parameters: {
-        type: 'object',
-        properties: {
-          client_id: { type: 'string', description: 'Filter by client ID' },
-          limit: { type: 'number', description: 'Max results (default 10)' }
-        }
+    name: 'get_call_transcript',
+    description: 'Get the full transcript and AI summary for a specific call.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        call_id: { type: 'string', description: 'The call log ID' }
+      },
+      required: ['call_id']
+    }
+  },
+  {
+    name: 'get_tax_documents',
+    description: 'Get tax documents for a client or list documents matching filters. Returns extracted data, AI summaries, and workflow status.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        client_id: { type: 'string', description: 'Filter by client ID' },
+        status: { type: 'string', description: 'Filter by status: uploaded, processing, review, approved, awaiting_signature, signed, filed, rejected' },
+        tax_year: { type: 'number', description: 'Filter by tax year (e.g. 2024)' },
+        doc_type: { type: 'string', description: 'Filter by type: W-2, 1099-NEC, 1099-K, 1099-MISC, K-1, 1040, Schedule-C, other' }
       }
     }
   },
   {
-    type: 'function',
-    function: {
-      name: 'get_call_transcript',
-      description: 'Get the full transcript and AI summary for a specific call.',
-      parameters: {
-        type: 'object',
-        properties: {
-          call_id: { type: 'string', description: 'The call log ID' }
-        },
-        required: ['call_id']
+    name: 'get_appointments',
+    description: 'Get upcoming or recent appointments, optionally filtered by client.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        client_id: { type: 'string', description: 'Filter by client ID' },
+        limit: { type: 'number', description: 'Max results (default 10)' }
       }
     }
   },
   {
-    type: 'function',
-    function: {
-      name: 'get_tax_documents',
-      description: 'Get tax documents for a client or list all documents with optional filters.',
-      parameters: {
-        type: 'object',
-        properties: {
-          client_id: { type: 'string', description: 'Filter by client ID' },
-          status: { type: 'string', description: 'Filter by status: uploaded, processing, review, approved, awaiting_signature, signed, filed, rejected' },
-          tax_year: { type: 'number', description: 'Filter by tax year (e.g. 2024)' },
-          doc_type: { type: 'string', description: 'Filter by type: W-2, 1099-NEC, 1099-K, 1099-MISC, K-1, 1040, Schedule-C, other' }
-        }
+    name: 'get_escalations',
+    description: 'Get current escalations (AI-flagged calls and emails requiring human review).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        scope: { type: 'string', enum: ['active', 'open', 'mine', 'all'], description: 'Which escalations to list' }
       }
     }
   },
   {
-    type: 'function',
-    function: {
-      name: 'get_appointments',
-      description: 'Get upcoming or recent appointments, optionally filtered by client.',
-      parameters: {
-        type: 'object',
-        properties: {
-          client_id: { type: 'string', description: 'Filter by client ID' },
-          limit: { type: 'number', description: 'Max results (default 10)' }
-        }
+    name: 'get_email_queue',
+    description: 'Get emails currently in the AI review/response queue.',
+    input_schema: {
+      type: 'object',
+      properties: {}
+    }
+  },
+  {
+    name: 'get_tasks',
+    description: 'Get current tasks on the task board.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        assigned_to: { type: 'string', description: 'Filter by assignee name or ID' },
+        status: { type: 'string', enum: ['todo', 'in_progress', 'done'], description: 'Filter by status' }
       }
     }
   },
   {
-    type: 'function',
-    function: {
-      name: 'get_escalations',
-      description: 'Get current escalations (AI-flagged calls and emails requiring human review).',
-      parameters: {
-        type: 'object',
-        properties: {
-          scope: { type: 'string', enum: ['active', 'open', 'mine', 'all'], description: 'Which escalations to list' }
-        }
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_email_queue',
-      description: 'Get emails currently in the AI review/response queue.',
-      parameters: {
-        type: 'object',
-        properties: {}
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_tasks',
-      description: 'Get current tasks on the task board.',
-      parameters: {
-        type: 'object',
-        properties: {
-          assigned_to: { type: 'string', description: 'Filter by assignee name or ID' },
-          status: { type: 'string', enum: ['todo', 'in_progress', 'done'], description: 'Filter by status' }
-        }
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'search_irs_guidance',
-      description: 'Search Rich\'s built-in IRS and tax knowledge base for rules, codes, limits, and strategies.',
-      parameters: {
-        type: 'object',
-        properties: {
-          topic: { type: 'string', description: 'Tax topic, form, code section, or concept to look up (e.g. "S-Corp election", "QBI deduction", "1031 exchange")' }
-        },
-        required: ['topic']
-      }
+    name: 'search_irs_guidance',
+    description: 'Search Rich\'s built-in IRS and tax knowledge base for rules, codes, limits, and strategies.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        topic: { type: 'string', description: 'Tax topic, form, code section, or concept to look up (e.g. "S-Corp election", "QBI deduction", "1031 exchange")' }
+      },
+      required: ['topic']
     }
   }
 ];
 
-// ── Tool execution — reads from in-memory mock data ──────────────────────────
+// ── Tool execution ────────────────────────────────────────────────────────────
 
 function executeTool(name, args) {
   try {
@@ -243,7 +219,7 @@ function executeTool(name, args) {
 
       case 'get_email_queue': {
         const { getEmailQueue } = require('./emailService');
-        const data = getEmailQueue ? getEmailQueue() : { queue: MOCK_REVIEW_QUEUE };
+        const data = getEmailQueue ? getEmailQueue() : { queue: [] };
         return data;
       }
 
@@ -328,7 +304,6 @@ function irsKnowledgeBase(topic) {
     }
   };
 
-  // Match topic to entries
   const matches = [];
   for (const [key, entry] of Object.entries(entries)) {
     if (t.includes(key) || key.includes(t) || entry.title.toLowerCase().includes(t)) {
@@ -336,7 +311,6 @@ function irsKnowledgeBase(topic) {
     }
   }
 
-  // Broader keyword match
   if (matches.length === 0) {
     const keywords = { 'self.employ': 'scorp', 'salary': 'scorp', 'rental': '1031', 'real estate': '1031', 'ira': 'sep', 'roth': 'backdoor roth', 'depreci': 'depreciation', 'home': 'home office', 'quarterly': 'estimated tax', 'partner': 'k-1', 'notice': 'cp2000', 'stock': 'cost basis', 'crypto': 'cost basis' };
     for (const [kw, key] of Object.entries(keywords)) {
@@ -352,9 +326,11 @@ function irsKnowledgeBase(topic) {
 }
 
 // ── System prompt ─────────────────────────────────────────────────────────────
+// Static — kept stable for prompt caching. Date is injected as a user-side
+// system-reminder block, not interpolated here, so the cached prefix doesn't
+// invalidate every day.
 
-function buildSystemPrompt(actor) {
-  return `You are Rich, the expert AI tax advisor and workflow assistant for WBCPA (Warren B. CPA). You are speaking with ${actor.name} (${actor.role}).
+const SYSTEM_PROMPT = `You are Rich, the expert AI tax advisor and workflow assistant for WBCPA (Warren B. CPA).
 
 ## Your expertise
 You are a seasoned CPA with deep knowledge of:
@@ -386,15 +362,13 @@ You have real-time access to all WBCPA data via function calls:
 - Cite IRS code sections, form numbers, and deadlines where relevant
 - If a document needs attention (e.g., rejected K-1, overdue signature), proactively flag it
 - You can help draft email responses, resolution notes, and client-facing communications
-- Format responses with clear headings and bullet points for readability
+- Format responses with clear headings (## Heading) and bullet points for readability
+- Use **bold** for emphasis on key numbers and concepts
 
 ## Tone
-Professional but approachable. You are a colleague, not a compliance robot. Be direct, practical, and smart.
+Professional but approachable. You are a colleague, not a compliance robot. Be direct, practical, and smart.`;
 
-Today's date: ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/New_York' })}`;
-}
-
-// ── Mock fallback when no OpenAI key ─────────────────────────────────────────
+// ── Mock fallback when no API key ────────────────────────────────────────────
 
 function mockReply(message) {
   const m = message.toLowerCase();
@@ -410,7 +384,7 @@ function mockReply(message) {
   if (m.includes('document') || m.includes('w-2') || m.includes('1099')) {
     return "I have access to all tax documents in the workflow system. I can show you which are pending review, awaiting signature, or flagged. For example: *\"What documents are waiting for approval?\"* or *\"Show me Marcus Johnson's tax documents.\"* I can also analyze extracted data and flag potential issues like mismatched income.";
   }
-  return `Hi! I'm Rich, WBCPA's AI tax advisor. I have access to all client data, call history, tax documents, and the full IRS knowledge base.\n\nI'm running in **demo mode** (no OpenAI API key configured) so I'm giving canned responses. With a live API key, I'll answer with real data from your system.\n\nThings I can help with:\n- **Client tax strategy** — pull up any client and advise based on their actual situation\n- **Document review** — analyze W-2s, 1099s, K-1s, and flag issues\n- **IRS questions** — S-Corp elections, QBI deductions, 1031 exchanges, CP2000 notices\n- **Workflow** — what escalations are open, what documents need attention\n\nWhat would you like to work on?`;
+  return `Hi! I'm Rich, WBCPA's AI tax advisor powered by Claude.\n\nI'm running in **demo mode** (no ANTHROPIC_API_KEY configured) so I'm giving canned responses. With a live API key, I'll answer with adaptive thinking + real data from your system.\n\nThings I can help with:\n- **Client tax strategy** — pull up any client and advise based on their actual situation\n- **Document review** — analyze W-2s, 1099s, K-1s, and flag issues\n- **IRS questions** — S-Corp elections, QBI deductions, 1031 exchanges, CP2000 notices\n- **Workflow** — what escalations are open, what documents need attention\n\nWhat would you like to work on?`;
 }
 
 // ── Main chat function ────────────────────────────────────────────────────────
@@ -418,77 +392,86 @@ function mockReply(message) {
 async function chat(actorId, actorInfo, userMessage) {
   const session = getSession(actorId);
 
-  // Append user message
+  // Append user message to session history (this is what gets persisted)
   session.messages.push({ role: 'user', content: userMessage });
 
-  // Mock mode
-  if (!OPENAI_API_KEY) {
+  if (!client) {
     const reply = mockReply(userMessage);
     session.messages.push({ role: 'assistant', content: reply });
     return { reply, mock: true, messages: session.messages };
   }
 
-  // Build messages array with system prompt
-  const systemMsg = { role: 'system', content: buildSystemPrompt(actorInfo) };
-  const chatMessages = [systemMsg, ...session.messages];
+  // Build the actor-context system-reminder. Inject volatile content (actor
+  // name + date) here as a user-turn reminder so the cached system prompt
+  // stays byte-stable across requests and across users.
+  const today = new Date().toLocaleDateString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/New_York'
+  });
+  const contextReminder = `<system-reminder>You are speaking with ${actorInfo.name} (role: ${actorInfo.role}). Today's date: ${today}.</system-reminder>`;
 
-  // OpenAI API call with function calling
-  let maxRounds = 8;
-  let currentMessages = chatMessages;
+  // The model needs to see the reminder; prepend it to the first user message
+  // sent in this API call. We don't mutate session.messages — just build the
+  // request-time messages array.
+  const apiMessages = session.messages.map((m, i) => {
+    if (i === 0 && m.role === 'user') {
+      return { role: 'user', content: `${contextReminder}\n\n${m.content}` };
+    }
+    return m;
+  });
 
-  while (maxRounds-- > 0) {
+  // Static system prompt with cache_control so the prefix is reused across
+  // every request and every user.
+  const systemBlocks = [
+    { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }
+  ];
+
+  let currentMessages = apiMessages.slice();
+  let safety = 8;
+
+  while (safety-- > 0) {
     let response;
     try {
-      const res = await axios.post(
-        'https://api.openai.com/v1/chat/completions',
-        {
-          model: OPENAI_MODEL,
-          messages: currentMessages,
-          tools: TOOLS,
-          tool_choice: 'auto',
-          max_tokens: 2000,
-          temperature: 0.3
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${OPENAI_API_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 30000
-        }
-      );
-      response = res.data.choices[0];
+      response = await client.messages.create({
+        model: CLAUDE_MODEL,
+        max_tokens: 16000,
+        thinking: { type: 'adaptive' },
+        system: systemBlocks,
+        tools: TOOLS,
+        messages: currentMessages
+      });
     } catch (err) {
-      const errMsg = err.response?.data?.error?.message || err.message;
-      session.messages.push({ role: 'assistant', content: `[Error contacting OpenAI: ${errMsg}]` });
-      return { reply: `I encountered an error: ${errMsg}`, error: errMsg, messages: session.messages };
+      const errMsg = err?.message || String(err);
+      const fallback = `I encountered an error contacting Claude: ${errMsg}`;
+      session.messages.push({ role: 'assistant', content: fallback });
+      return { reply: fallback, error: errMsg, messages: session.messages };
     }
 
-    const msg = response.message;
-
-    if (response.finish_reason === 'tool_calls' && msg.tool_calls?.length) {
-      // Execute tool calls
-      currentMessages = [...currentMessages, msg];
-      for (const tc of msg.tool_calls) {
-        let args = {};
-        try { args = JSON.parse(tc.function.arguments || '{}'); } catch {}
-        const result = executeTool(tc.function.name, args);
-        currentMessages.push({
-          role: 'tool',
-          tool_call_id: tc.id,
-          content: JSON.stringify(result)
-        });
-      }
-      // Continue loop for the model to process tool results
-    } else {
-      // Final text response
-      const reply = msg.content || '';
-      session.messages.push({ role: 'assistant', content: reply });
-      return { reply, messages: session.messages };
+    // Tool use? Run all requested tools and continue the loop.
+    if (response.stop_reason === 'tool_use') {
+      const toolUseBlocks = response.content.filter((b) => b.type === 'tool_use');
+      // Append the full assistant content (preserves thinking + tool_use blocks for the next turn)
+      currentMessages.push({ role: 'assistant', content: response.content });
+      const toolResults = toolUseBlocks.map((tu) => ({
+        type: 'tool_result',
+        tool_use_id: tu.id,
+        content: JSON.stringify(executeTool(tu.name, tu.input || {}))
+      }));
+      currentMessages.push({ role: 'user', content: toolResults });
+      continue;
     }
+
+    // Final text response. Extract the visible text (skip thinking blocks).
+    const textBlocks = response.content.filter((b) => b.type === 'text');
+    const reply = textBlocks.map((b) => b.text).join('\n').trim() || '(no response)';
+    session.messages.push({ role: 'assistant', content: reply });
+    return {
+      reply,
+      messages: session.messages,
+      usage: response.usage
+    };
   }
 
-  const fallback = 'I ran into a loop processing your request. Please try rephrasing.';
+  const fallback = "I ran into a tool-use loop processing your request. Please try rephrasing.";
   session.messages.push({ role: 'assistant', content: fallback });
   return { reply: fallback, messages: session.messages };
 }
