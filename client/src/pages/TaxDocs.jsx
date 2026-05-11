@@ -381,7 +381,7 @@ function DocDetailPanel({ doc, can, pending, onClose, onAction, onRefresh }) {
         {/* AI Summary */}
         {doc.ai_summary && (
           <div style={{ background: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.2)', borderRadius: 10, padding: 14 }}>
-            <div style={{ color: 'var(--info)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Rich's Analysis</div>
+            <div style={{ color: 'var(--info)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Milton's Analysis</div>
             <div style={{ fontSize: '0.88rem', lineHeight: 1.6 }}>{doc.ai_summary}</div>
           </div>
         )}

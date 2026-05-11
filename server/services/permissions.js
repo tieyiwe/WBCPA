@@ -97,8 +97,8 @@ const PERMISSIONS = {
   'taxdocs.review':        ['owner', 'admin', 'manager', 'staff'],
   'taxdocs.approve':       ['owner', 'admin', 'manager'],
 
-  // Rich AI agent
-  'rich.use':              ['owner', 'admin', 'manager', 'staff']
+  // Milton AI agent
+  'milton.use':            ['owner', 'admin', 'manager', 'staff', 'viewer']
 };
 
 function hasPermission(role, key) {

@@ -30,9 +30,9 @@ const NAV = [
     ]
   },
   {
-    label: 'AI Tools',
+    label: 'AI Assistant',
     items: [
-      { to: '/dashboard/rich', icon: '◈', title: 'Rich — AI Advisor', permission: 'rich.use' }
+      { to: '/dashboard/milton', icon: '◈', title: 'Ask Milton', permission: 'milton.use' }
     ]
   },
   {

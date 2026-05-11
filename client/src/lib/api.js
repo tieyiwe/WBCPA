@@ -180,9 +180,9 @@ export const markTaxDocFiled = (id) =>
 export const addTaxDocNote = (id, note) =>
   request(`/taxdocs/${id}/note`, { method: 'POST', body: JSON.stringify({ note }) });
 
-// ─── Rich AI Agent ─────────────────────────────────────────────────────────────
-export const richChat = (message) =>
-  request('/rich/chat', { method: 'POST', body: JSON.stringify({ message }) });
-export const richClearSession = () =>
-  request('/rich/chat', { method: 'DELETE' });
-export const richGetSession = () => request('/rich/session');
+// ─── Milton AI Agent ───────────────────────────────────────────────────────────
+export const miltonChat = (message) =>
+  request('/milton/chat', { method: 'POST', body: JSON.stringify({ message }) });
+export const miltonClearSession = () =>
+  request('/milton/chat', { method: 'DELETE' });
+export const miltonGetSession = () => request('/milton/session');

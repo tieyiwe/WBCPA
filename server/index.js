@@ -25,7 +25,7 @@ const webhooksRoutes = require('./routes/webhooks');
 const adminRoutes = require('./routes/admin');
 const escalationsRoutes = require('./routes/escalations');
 const taxDocsRoutes = require('./routes/taxDocs');
-const richRoutes = require('./routes/rich');
+const miltonRoutes = require('./routes/milton');
 
 const { deployAgent } = require('./services/superAgentService');
 const { sendDeadlineReminders } = require('./services/reminderService');
@@ -62,7 +62,7 @@ app.use('/api/webhooks', webhooksRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/escalations', escalationsRoutes);
 app.use('/api/taxdocs', taxDocsRoutes);
-app.use('/api/rich', richRoutes);
+app.use('/api/milton', miltonRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'WBCPA Super Agent' });

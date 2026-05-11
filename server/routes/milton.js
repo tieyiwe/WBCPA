@@ -1,40 +1,40 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Rich AI Agent — chat endpoint
-// POST /api/rich/chat   → { message } → { reply, mock, messages }
-// DELETE /api/rich/chat → clear session
-// GET /api/rich/session → get current session state
+// Milton AI Agent — chat endpoint
+// POST /api/milton/chat   → { message } → { reply, mock, messages }
+// DELETE /api/milton/chat → clear session
+// GET /api/milton/session → get current session state
 // ─────────────────────────────────────────────────────────────────────────────
 
 const router = require('express').Router();
 const { attachActor, requirePermission } = require('../middleware/currentActor');
-const richSvc = require('../services/richAgentService');
+const miltonSvc = require('../services/miltonAgentService');
 
 router.use(attachActor);
 
-// POST /api/rich/chat
-router.post('/chat', requirePermission('rich.use'), async (req, res) => {
+// POST /api/milton/chat
+router.post('/chat', requirePermission('milton.use'), async (req, res) => {
   const { message } = req.body || {};
   if (!message || !message.trim()) {
     return res.status(400).json({ error: 'message is required.' });
   }
   try {
-    const result = await richSvc.chat(req.actor.id, req.actor, message.trim());
+    const result = await miltonSvc.chat(req.actor.id, req.actor, message.trim());
     res.json(result);
   } catch (err) {
-    console.error('[Rich] chat error:', err.message);
+    console.error('[Milton] chat error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// DELETE /api/rich/chat — clear session history
-router.delete('/chat', requirePermission('rich.use'), (req, res) => {
-  const result = richSvc.clearSession(req.actor.id);
+// DELETE /api/milton/chat — clear session history
+router.delete('/chat', requirePermission('milton.use'), (req, res) => {
+  const result = miltonSvc.clearSession(req.actor.id);
   res.json(result);
 });
 
-// GET /api/rich/session — retrieve current session messages
-router.get('/session', requirePermission('rich.use'), (req, res) => {
-  const session = richSvc.getSession(req.actor.id);
+// GET /api/milton/session — retrieve current session messages
+router.get('/session', requirePermission('milton.use'), (req, res) => {
+  const session = miltonSvc.getSession(req.actor.id);
   res.json({ session });
 });
 
