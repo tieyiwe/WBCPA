@@ -59,13 +59,25 @@ export default function Topbar() {
     const result = await deployAgent();
     setDeploying(false);
     if (result?.ok) {
-      setDeployMessage({ tone: 'success', text: '✓ Agent Deployed' });
+      setDeployMessage({
+        tone: 'success',
+        text: '✓ Agent Deployed',
+        detail: result.agent_id ? `Bland agent_id: ${result.agent_id}${result.season ? ` · season: ${result.season}` : ''}` : 'Voice agent is live on Bland.'
+      });
     } else if (result?.mock) {
-      setDeployMessage({ tone: 'warning', text: 'Configure API Keys in Secrets' });
+      setDeployMessage({
+        tone: 'warning',
+        text: '⚠ Bland not configured',
+        detail: result.message || 'Add BLAND_API_KEY to Replit Secrets, then restart.'
+      });
     } else {
-      setDeployMessage({ tone: 'error', text: result?.error || 'Deploy failed' });
+      setDeployMessage({
+        tone: 'error',
+        text: '✕ Deploy failed',
+        detail: result?.error || 'See server logs for the Bland API response.'
+      });
     }
-    setTimeout(() => setDeployMessage(null), 3500);
+    setTimeout(() => setDeployMessage(null), 8000);
   }
 
   const today = new Date().toLocaleDateString('en-US', {
@@ -76,8 +88,13 @@ export default function Topbar() {
     year: 'numeric'
   });
 
+  const toneColor = deployMessage?.tone === 'success' ? 'var(--success)'
+                  : deployMessage?.tone === 'warning' ? 'var(--warning)'
+                  : deployMessage?.tone === 'error'   ? 'var(--error)'
+                  : 'var(--gold)';
+
   return (
-    <header className="topbar">
+    <header className="topbar" style={{ position: 'relative' }}>
       <div>
         <h1>{meta.title}</h1>
         <div className="sub">{meta.sub} · {today}</div>
@@ -92,13 +109,31 @@ export default function Topbar() {
               <span className="spinner" />
               Deploying…
             </>
-          ) : deployMessage ? (
-            deployMessage.text
           ) : (
             '✦ Deploy Agent'
           )}
         </button>
       </div>
+
+      {deployMessage && (
+        <div style={{
+          position: 'absolute', top: '100%', right: 24, marginTop: 8, zIndex: 50,
+          background: 'var(--bg-elev-1)', border: `1px solid ${toneColor}`,
+          borderRadius: 10, padding: '12px 16px', minWidth: 280, maxWidth: 420,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.4)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <strong style={{ color: toneColor }}>{deployMessage.text}</strong>
+            <button className="btn btn-ghost" style={{ padding: '2px 8px', fontSize: '0.78rem' }}
+              onClick={() => setDeployMessage(null)}>✕</button>
+          </div>
+          {deployMessage.detail && (
+            <div style={{ marginTop: 6, fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+              {deployMessage.detail}
+            </div>
+          )}
+        </div>
+      )}
     </header>
   );
 }
