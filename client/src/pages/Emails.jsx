@@ -64,7 +64,7 @@ export default function Emails() {
 
         {sent.map((e) => (
           <div key={e.id} className="list-item" style={{ cursor: 'default' }}>
-            <div className="avatar" style={{ background: 'linear-gradient(135deg, var(--success) 0%, #139676 100%)', color: '#0a0d14' }}>
+            <div className="avatar" style={{ background: 'linear-gradient(135deg, var(--success) 0%, #139676 100%)', color: '#fff' }}>
               ✓
             </div>
             <div className="body">

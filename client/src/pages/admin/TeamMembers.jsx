@@ -119,7 +119,7 @@ function Section({ title, members, editId, setEditId, onUpdate, onDeactivate, on
               <tr key={m.id} style={{ opacity: deactivated ? 0.55 : 1 }}>
                 <td>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div className="avatar" style={{ background: m.avatar_color || '#555', color: '#0a0d14' }}>
+                    <div className="avatar" style={{ background: m.avatar_color || '#555', color: '#fff' }}>
                       {initials(m.name)}
                     </div>
                     <div>

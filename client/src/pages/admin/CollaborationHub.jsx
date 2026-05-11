@@ -159,7 +159,7 @@ function NoteCard({ note, team, can, onPin, onDelete }) {
         <div className="avatar" style={{
           width: 36, height: 36,
           background: author?.avatar_color || '#555',
-          color: '#0a0d14',
+          color: '#fff',
           flex: 'none'
         }}>
           {initials(note.author_name)}

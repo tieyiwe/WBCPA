@@ -76,7 +76,7 @@ export default function Profile() {
       <div className="card" style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
         <div className="avatar" style={{
           width: 78, height: 78, fontSize: '1.6rem',
-          background: edits.avatar_color || profile.avatar_color, color: '#0a0d14',
+          background: edits.avatar_color || profile.avatar_color, color: '#fff',
           flex: 'none'
         }}>
           {initials(edits.name || profile.name)}
@@ -298,7 +298,7 @@ function Toggle({ label, sub, checked, onChange }) {
         <span style={{
           position: 'absolute', top: 2, left: checked ? 22 : 2,
           width: 18, height: 18, borderRadius: 999,
-          background: checked ? '#0a0d14' : 'var(--text)',
+          background: checked ? '#fff' : 'var(--text)',
           transition: 'left 0.15s'
         }} />
       </button>

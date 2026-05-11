@@ -115,7 +115,7 @@ export default function TaxDocs() {
               {step.label}
               {statusCounts[step.key] > 0 && (
                 <span style={{
-                  background: STATUS_META[step.key]?.color, color: '#0a0d14',
+                  background: STATUS_META[step.key]?.color, color: '#fff',
                   borderRadius: 10, padding: '1px 6px', fontSize: '0.72rem', fontWeight: 700
                 }}>{statusCounts[step.key]}</span>
               )}
@@ -341,7 +341,7 @@ function DocDetailPanel({ doc, can, pending, onClose, onAction, onRefresh }) {
                   width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '0.72rem', fontWeight: 700,
                   background: isPast ? 'var(--success)' : isCurrent ? stepMeta?.color || 'var(--gold)' : 'var(--bg-elev-2)',
-                  color: isPast || isCurrent ? '#0a0d14' : 'var(--text-dim)',
+                  color: isPast || isCurrent ? '#fff' : 'var(--text-dim)',
                   border: `2px solid ${isPast ? 'var(--success)' : isCurrent ? stepMeta?.color || 'var(--gold)' : 'var(--border)'}`
                 }}>
                   {isPast ? '✓' : i + 1}

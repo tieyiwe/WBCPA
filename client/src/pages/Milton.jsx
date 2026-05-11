@@ -297,9 +297,9 @@ function MiltonAvatar({ size = 32, center = false }) {
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%', flex: 'none',
-      background: 'linear-gradient(135deg, var(--gold) 0%, #b0916b 100%)',
+      background: 'linear-gradient(135deg, var(--gold) 0%, var(--olive-deep) 100%)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize, fontWeight: 700, color: '#0a0d14',
+      fontSize, fontWeight: 700, color: '#fff',
       margin: center ? '0 auto' : undefined
     }}>M</div>
   );
@@ -373,7 +373,7 @@ function MessageBubble({ msg }) {
       )}
       <div style={{
         maxWidth: '72%', background: isUser ? 'var(--gold)' : 'var(--bg-elev-2)',
-        color: isUser ? '#0a0d14' : 'inherit',
+        color: isUser ? '#fff' : 'inherit',
         borderRadius: isUser ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
         padding: '10px 16px', fontSize: '0.9rem', lineHeight: 1.6
       }}>

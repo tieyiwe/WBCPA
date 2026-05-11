@@ -73,8 +73,8 @@ export default function MiltonWidget() {
         style={{
           position: 'fixed', bottom: 20, right: 20, zIndex: 90,
           width: 60, height: 60, borderRadius: '50%', border: 'none',
-          background: 'linear-gradient(135deg, var(--gold) 0%, #b0916b 100%)',
-          color: '#0a0d14', cursor: 'pointer',
+          background: 'linear-gradient(135deg, var(--gold) 0%, var(--olive-deep) 100%)',
+          color: '#fff', cursor: 'pointer',
           boxShadow: '0 8px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(201,168,76,0.4)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontFamily: 'var(--font-display)', fontSize: '1.6rem', fontWeight: 700,
@@ -116,9 +116,9 @@ export default function MiltonWidget() {
       }}>
         <div style={{
           width: 32, height: 32, borderRadius: '50%', flex: 'none',
-          background: 'linear-gradient(135deg, var(--gold) 0%, #b0916b 100%)',
+          background: 'linear-gradient(135deg, var(--gold) 0%, var(--olive-deep) 100%)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '0.9rem', fontWeight: 700, color: '#0a0d14'
+          fontSize: '0.9rem', fontWeight: 700, color: '#fff'
         }}>M</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: '0.92rem' }}>Milton</div>
@@ -227,7 +227,7 @@ export default function MiltonWidget() {
             style={{
               padding: '8px 12px', borderRadius: 8, border: 'none',
               background: input.trim() && !sending ? 'var(--gold)' : 'var(--bg-elev-2)',
-              color: input.trim() && !sending ? '#0a0d14' : 'var(--text-dim)',
+              color: input.trim() && !sending ? '#fff' : 'var(--text-dim)',
               cursor: input.trim() && !sending ? 'pointer' : 'not-allowed',
               fontWeight: 600, fontSize: '0.84rem'
             }}
@@ -242,9 +242,9 @@ function SmallAvatar() {
   return (
     <div style={{
       width: 26, height: 26, borderRadius: '50%', flex: 'none',
-      background: 'linear-gradient(135deg, var(--gold) 0%, #b0916b 100%)',
+      background: 'linear-gradient(135deg, var(--gold) 0%, var(--olive-deep) 100%)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: '0.72rem', fontWeight: 700, color: '#0a0d14'
+      fontSize: '0.72rem', fontWeight: 700, color: '#fff'
     }}>M</div>
   );
 }
@@ -302,7 +302,7 @@ function WidgetMessageBubble({ msg }) {
       <div style={{
         maxWidth: '78%',
         background: isUser ? 'var(--gold)' : 'var(--bg-elev-2)',
-        color: isUser ? '#0a0d14' : 'inherit',
+        color: isUser ? '#fff' : 'inherit',
         borderRadius: isUser ? '10px 4px 10px 10px' : '4px 10px 10px 10px',
         padding: '8px 12px', fontSize: '0.82rem', lineHeight: 1.5
       }}>

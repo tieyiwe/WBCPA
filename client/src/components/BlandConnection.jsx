@@ -171,7 +171,7 @@ function Step({ done, text }) {
         width: 18, height: 18, borderRadius: 4, flex: 'none',
         background: done ? 'var(--success)' : 'transparent',
         border: `1px solid ${done ? 'var(--success)' : 'var(--border-strong)'}`,
-        color: '#0a0d14', fontWeight: 700, textAlign: 'center', fontSize: '0.76rem', lineHeight: '16px'
+        color: '#fff', fontWeight: 700, textAlign: 'center', fontSize: '0.76rem', lineHeight: '16px'
       }}>{done ? '✓' : ''}</div>
       <div style={{ fontSize: '0.86rem', color: done ? 'var(--text)' : 'var(--text-muted)', lineHeight: 1.45 }}>{text}</div>
     </div>

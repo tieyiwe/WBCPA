@@ -153,7 +153,7 @@ export default function Sidebar() {
           }}>
             <div className="avatar" style={{
               width: 32, height: 32, fontSize: '0.78rem',
-              background: profile.avatar_color || '#555', color: '#0a0d14', flex: 'none'
+              background: profile.avatar_color || '#555', color: '#fff', flex: 'none'
             }}>{initials(profile.name)}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: '0.84rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

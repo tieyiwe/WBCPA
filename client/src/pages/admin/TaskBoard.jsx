@@ -171,7 +171,7 @@ function TaskCard({ task, team, can, onMove, onAssign, onDelete }) {
               <div className="avatar" style={{
                 width: 22, height: 22, fontSize: '0.68rem',
                 background: team.find((t) => t.id === task.assignee_id)?.avatar_color || '#555',
-                color: '#0a0d14'
+                color: '#fff'
               }}>
                 {initials(task.assignee_name)}
               </div>

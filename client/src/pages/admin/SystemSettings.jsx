@@ -240,7 +240,7 @@ function Toggle({ label, sub, checked, onChange, disabled }) {
           top: 2, left: checked ? 22 : 2,
           width: 18, height: 18,
           borderRadius: 999,
-          background: checked ? '#0a0d14' : 'var(--text)',
+          background: checked ? '#fff' : 'var(--text)',
           transition: 'left 0.15s'
         }} />
       </button>
