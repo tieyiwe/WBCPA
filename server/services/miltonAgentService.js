@@ -17,6 +17,16 @@ const CLAUDE_MODEL = process.env.MILTON_MODEL || 'claude-sonnet-4-6';
 
 const client = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
 
+// Boot-time confirmation so it's obvious from logs which key Milton is using
+// (we never log the key itself, only which env var sourced it).
+if (client) {
+  const keySource = process.env.MILTON_ANTHROPIC_API_KEY ? 'MILTON_ANTHROPIC_API_KEY' : 'ANTHROPIC_API_KEY';
+  const masked = `${ANTHROPIC_API_KEY.slice(0, 8)}…${ANTHROPIC_API_KEY.slice(-4)}`;
+  console.log(`[Milton] Anthropic client ready · model=${CLAUDE_MODEL} · key source=${keySource} · key=${masked}`);
+} else {
+  console.log('[Milton] No ANTHROPIC_API_KEY — running in mock mode.');
+}
+
 // ── In-memory conversation store (per actor) ─────────────────────────────────
 // Keyed by actor.id. Each value: { messages: [...], createdAt }
 const sessions = {};
@@ -636,7 +646,22 @@ async function chat(actorId, actorInfo, userMessage) {
       });
     } catch (err) {
       const errMsg = err?.message || String(err);
-      const fallback = `I encountered an error contacting Claude: ${errMsg}`;
+      const lower = errMsg.toLowerCase();
+
+      // Spend-cap / quota error from Anthropic Console — friendlier message
+      let fallback;
+      if (lower.includes('usage limit') || lower.includes('spend limit') || lower.includes('quota')) {
+        const keySource = process.env.MILTON_ANTHROPIC_API_KEY ? 'MILTON_ANTHROPIC_API_KEY' : 'ANTHROPIC_API_KEY';
+        fallback = `⚠️ **Anthropic spend limit reached on your API key.**\n\nMilton is wired up correctly, but the API key in **${keySource}** has a usage cap set in the Anthropic Console that's been hit.\n\n**To fix:**\n1. Open https://console.anthropic.com/settings/limits\n2. Raise or remove the monthly spend limit on this key\n   *(or generate a new key without a cap and update the Replit Secret)*\n3. Restart the Repl\n\nOriginal error: \`${errMsg}\``;
+      } else if (err?.status === 401 || lower.includes('authentication')) {
+        fallback = `🔑 **Anthropic API key is invalid or revoked.** Update \`ANTHROPIC_API_KEY\` (or \`MILTON_ANTHROPIC_API_KEY\`) in Replit Secrets and restart the Repl.\n\nOriginal error: \`${errMsg}\``;
+      } else if (err?.status === 429 || lower.includes('rate limit')) {
+        fallback = `🚦 Anthropic rate-limit hit — try again in a moment.\n\nOriginal error: \`${errMsg}\``;
+      } else {
+        fallback = `I encountered an error contacting Claude: ${errMsg}`;
+      }
+
+      console.warn('[Milton] Anthropic error:', err?.status, errMsg);
       session.messages.push({ role: 'assistant', content: fallback });
       return { reply: fallback, error: errMsg, messages: session.messages };
     }

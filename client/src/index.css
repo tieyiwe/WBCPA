@@ -235,10 +235,14 @@ code, pre {
   100% { transform: scale(1);    box-shadow: 0 0 0 4px rgba(45,212,170,0.18), 0 0 22px rgba(45,212,170,0.35); }
 }
 
-/* ─── Rich AI typing indicator ───────────────────────────────────────────── */
+/* ─── Milton AI typing indicator + widget pop-in ─────────────────────────── */
 @keyframes typing-dot {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
   30%           { transform: translateY(-5px); opacity: 1; }
+}
+@keyframes milton-pop-in {
+  0%   { opacity: 0; transform: translateY(20px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* ─── Topbar ──────────────────────────────────────────────────────────────── */
