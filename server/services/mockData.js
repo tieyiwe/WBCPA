@@ -571,6 +571,22 @@ const MOCK_CLIENTS = [
 
 const MOCK_TEAM_MEMBERS = [
   {
+    id: 'tm_000',
+    name: 'TIblogics',
+    email: 'design@tiblogics.com',
+    phone: null,
+    role: 'super_owner',
+    title: 'Technical Owner',
+    status: 'active',
+    avatar_color: '#5C6E2D',
+    bio: 'Maintains the WBCPA Command Center — voice-agent deployment, integrations, API keys, infrastructure, and system settings. Single point of contact for anything technical.',
+    timezone: 'America/New_York',
+    pronouns: 'they/them',
+    notification_prefs: { email_escalations: false, sms_escalations: false, mentions: true, daily_digest: false },
+    last_active_at: minsAgo(2),
+    created_at: daysAgo(730)
+  },
+  {
     id: 'tm_001',
     name: 'Ebere Okoye',
     email: 'ebere@thewealthbuildingcpa.com',

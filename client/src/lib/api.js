@@ -180,6 +180,27 @@ export const markTaxDocFiled = (id) =>
 export const addTaxDocNote = (id, note) =>
   request(`/taxdocs/${id}/note`, { method: 'POST', body: JSON.stringify({ note }) });
 
+// Bulk upload + assignment + complexity
+export const bulkUploadTaxDocs = (payload) =>
+  request('/taxdocs/bulk', { method: 'POST', body: JSON.stringify(payload) });
+export const assignTaxDoc = (id, assignee_id, assignee_name) =>
+  request(`/taxdocs/${id}/assign`, { method: 'POST', body: JSON.stringify({ assignee_id, assignee_name }) });
+export const getTaxDocClients = () => request('/taxdocs/clients');
+export const getTaxDocComplexity = (id) => request(`/taxdocs/${id}/complexity`);
+export const getClientTaxComplexity = (clientId) => request(`/taxdocs/clients/${clientId}/complexity`);
+
+// Secure client upload portal (staff)
+export const createUploadLink = (payload) =>
+  request('/taxdocs/upload-link', { method: 'POST', body: JSON.stringify(payload) });
+export const listUploadLinks = () => request('/taxdocs/upload-links');
+export const revokeUploadLink = (token) =>
+  request(`/taxdocs/upload-link/${token}/revoke`, { method: 'POST' });
+
+// Public client portal (no auth)
+export const getPublicUploadInfo = (token) => request(`/public/upload/${token}`);
+export const postPublicUpload = (token, files) =>
+  request(`/public/upload/${token}`, { method: 'POST', body: JSON.stringify({ files }) });
+
 // ─── Milton AI Agent ───────────────────────────────────────────────────────────
 export const miltonChat = (message) =>
   request('/milton/chat', { method: 'POST', body: JSON.stringify({ message }) });

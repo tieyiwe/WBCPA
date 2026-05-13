@@ -248,7 +248,7 @@ function EscalationCard({ item, can, role, pending, recentlyAccepted, isNew, onA
                 color: 'var(--terracotta)',
                 border: '1px solid rgba(184,98,58,0.4)',
                 fontWeight: 600
-              }}>📞 From Bland AI</span>
+              }}>📞 From Celine AI</span>
             )}
             {isClaimed && (
               <span className="badge badge-green">

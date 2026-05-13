@@ -25,6 +25,7 @@ const webhooksRoutes = require('./routes/webhooks');
 const adminRoutes = require('./routes/admin');
 const escalationsRoutes = require('./routes/escalations');
 const taxDocsRoutes = require('./routes/taxDocs');
+const publicUploadRoutes = require('./routes/publicUpload');
 const miltonRoutes = require('./routes/milton');
 
 const { deployAgent } = require('./services/superAgentService');
@@ -62,6 +63,7 @@ app.use('/api/webhooks', webhooksRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/escalations', escalationsRoutes);
 app.use('/api/taxdocs', taxDocsRoutes);
+app.use('/api/public', publicUploadRoutes);
 app.use('/api/milton', miltonRoutes);
 
 app.get('/health', (req, res) => {

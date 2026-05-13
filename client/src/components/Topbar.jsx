@@ -3,11 +3,12 @@ import { useLocation, matchPath } from 'react-router-dom';
 import SeasonPill from './SeasonPill.jsx';
 import RoleSwitcher from './RoleSwitcher.jsx';
 import { deployAgent } from '../lib/api.js';
+import { useRole } from '../lib/roleContext.jsx';
 
 const TITLES = {
   '/dashboard': { title: 'Overview', sub: 'Real-time snapshot of your WBCPA Command Center' },
   '/dashboard/calls': { title: 'Call Log', sub: 'Every inbound call, summarized' },
-  '/dashboard/agent': { title: 'Voice Agent', sub: 'Deploy, tune, and inspect the Bland AI prompt' },
+  '/dashboard/agent': { title: 'Celine — Voice Agent', sub: 'Deploy, tune, and inspect the voice agent (Super Owner only)' },
   '/dashboard/subscribers': { title: 'Subscribers', sub: 'Member management' },
   '/dashboard/appointments': { title: 'Appointments', sub: 'Calendar and availability' },
   '/dashboard/emails': { title: 'Emails', sub: 'AI-handled inbox and review queue' },
@@ -36,10 +37,12 @@ function resolveTitle(pathname) {
 
 export default function Topbar() {
   const location = useLocation();
+  const { can } = useRole();
   const meta = resolveTitle(location.pathname);
   const [season, setSeason] = useState(null);
   const [deploying, setDeploying] = useState(false);
   const [deployMessage, setDeployMessage] = useState(null);
+  const canDeploy = can('agent.deploy');
 
   useEffect(() => {
     let mounted = true;
@@ -103,6 +106,7 @@ export default function Topbar() {
         {season && <SeasonPill seasonKey={season} />}
         <RoleSwitcher />
         <button className="btn btn-ghost" onClick={() => window.location.reload()}>↻ Refresh</button>
+        {canDeploy && (
         <button className="btn btn-gold" onClick={handleDeploy} disabled={deploying}>
           {deploying ? (
             <>
@@ -113,6 +117,7 @@ export default function Topbar() {
             '✦ Deploy Agent'
           )}
         </button>
+        )}
       </div>
 
       {deployMessage && (

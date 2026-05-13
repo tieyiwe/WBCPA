@@ -16,6 +16,7 @@ import Profile from './pages/Profile.jsx';
 import Escalations from './pages/Escalations.jsx';
 import TaxDocs from './pages/TaxDocs.jsx';
 import Milton from './pages/Milton.jsx';
+import ClientUpload from './pages/ClientUpload.jsx';
 import AdminPanel from './pages/admin/AdminPanel.jsx';
 import TeamMembers from './pages/admin/TeamMembers.jsx';
 import RolesMatrix from './pages/admin/RolesMatrix.jsx';
@@ -47,6 +48,8 @@ function ProtectedLayout() {
 export default function App() {
   return (
     <Routes>
+      {/* Public — no auth, no layout */}
+      <Route path="/upload/:token" element={<ClientUpload />} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="/dashboard" element={<ProtectedLayout />}>
         <Route index element={<Dashboard />} />

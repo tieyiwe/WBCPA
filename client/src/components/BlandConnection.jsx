@@ -58,7 +58,7 @@ export default function BlandConnection() {
     <div className="card">
       <div className="flex-between" style={{ flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <div className="card-title" style={{ marginBottom: 0 }}>Bland AI Connection</div>
+          <div className="card-title" style={{ marginBottom: 0 }}>Celine — Voice Agent Connection</div>
           <div className="card-sub" style={{ marginTop: 2 }}>
             How your phone number, voice agent, and webhooks are wired up.
           </div>
@@ -70,7 +70,7 @@ export default function BlandConnection() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginTop: 14 }}>
         <StatusTile
-          label="Bland AI"
+          label="Celine (Bland)"
           state={blandConnected ? 'ok' : 'off'}
           detail={blandConnected
             ? (status.bland.agent_id_set ? `Agent: ${status.bland.agent_id}` : 'Key set, agent not yet deployed')
@@ -96,7 +96,7 @@ export default function BlandConnection() {
       {/* Webhooks */}
       <div style={{ marginTop: 18 }}>
         <div style={{ textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.72rem', color: 'var(--gold-soft)', marginBottom: 8 }}>
-          Paste these URLs into Bland AI
+          Paste these URLs into the voice-agent platform
         </div>
         <div className="card-sub" style={{ marginBottom: 10 }}>
           The agent calls these endpoints during live calls. They include an <code style={{ background: 'var(--bg-elev-2)', padding: '1px 5px', borderRadius: 3 }}>x-api-key</code> header

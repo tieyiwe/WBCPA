@@ -4,18 +4,25 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ROLES = {
+  super_owner: {
+    key: 'super_owner',
+    label: 'Super Owner',
+    rank: 120,
+    description: 'Technical owner — handles voice-agent deployment, integrations, API keys, system settings, and infrastructure. Reserved for TIblogics.',
+    color: '#5C6E2D'
+  },
   owner: {
     key: 'owner',
     label: 'Owner',
     rank: 100,
-    description: 'Full access to everything including billing and ownership transfer.',
+    description: 'Firm owner — full access to clients, team, billing, and ownership transfer. Technical infrastructure is handled by the Super Owner.',
     color: '#c9a84c'
   },
   admin: {
     key: 'admin',
     label: 'Administrator',
     rank: 80,
-    description: 'Manages team, clients, agent, and system settings. No billing access.',
+    description: 'Manages team and client work. Technical infrastructure is handled by the Super Owner.',
     color: '#b0916b'
   },
   manager: {
@@ -57,9 +64,9 @@ const PERMISSIONS = {
   'appointments.book':     ['owner', 'admin', 'manager', 'staff'],
   'appointments.cancel':   ['owner', 'admin', 'manager'],
 
-  // Agent config
-  'agent.view':            ['owner', 'admin', 'manager'],
-  'agent.deploy':          ['owner', 'admin'],
+  // Voice agent config (technical) — Super Owner only
+  'agent.view':            ['super_owner'],
+  'agent.deploy':          ['super_owner'],
 
   // Collaboration
   'notes.view':            ['owner', 'admin', 'manager', 'staff', 'viewer'],
@@ -83,11 +90,14 @@ const PERMISSIONS = {
   'roles.manage':          ['owner'],
   'activity.view':         ['owner', 'admin'],
   'activity.export':       ['owner'],
-  'system.settings.view':  ['owner', 'admin'],
-  'system.settings.edit':  ['owner', 'admin'],
-  'integrations.manage':   ['owner', 'admin'],
-  'api_keys.view':         ['owner', 'admin'],
-  'api_keys.rotate':       ['owner'],
+  // Technical / infrastructure — Super Owner only
+  'system.settings.view':  ['super_owner'],
+  'system.settings.edit':  ['super_owner'],
+  'integrations.manage':   ['super_owner'],
+  'api_keys.view':         ['super_owner'],
+  'api_keys.rotate':       ['super_owner'],
+  // Setup guide (technical)
+  'setup.view':            ['super_owner'],
   'billing.view':          ['owner'],
   'billing.manage':        ['owner'],
 
@@ -103,6 +113,8 @@ const PERMISSIONS = {
 
 function hasPermission(role, key) {
   if (!role || !key) return false;
+  // Super Owner (TIblogics) inherits every permission — technical superuser.
+  if (role === 'super_owner') return true;
   const allowed = PERMISSIONS[key];
   if (!allowed) return false;
   return allowed.includes(role);

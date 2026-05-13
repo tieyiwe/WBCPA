@@ -111,4 +111,83 @@ router.post('/:id/note', requirePermission('taxdocs.review'), (req, res) => {
   }
 });
 
+// ─── Client-grouped view + per-doc complexity ────────────────────────────────
+router.get('/clients', (req, res) => {
+  try {
+    res.json({ clients: svc.listClients() });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+router.get('/clients/:clientId/complexity', (req, res) => {
+  try {
+    const complexity = svc.computeClientComplexity(req.params.clientId);
+    const assignee = svc.suggestAssignee(complexity);
+    res.json({ complexity, suggested_assignee: assignee });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+router.get('/:id/complexity', (req, res) => {
+  try {
+    const doc = svc.getDoc(req.params.id);
+    if (!doc) return res.status(404).json({ error: 'Document not found.' });
+    const complexity = svc.computeDocComplexity(doc);
+    const assignee = svc.suggestAssignee(doc);
+    res.json({ complexity, suggested_assignee: assignee });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// ─── Per-doc assignment ──────────────────────────────────────────────────────
+router.post('/:id/assign', requirePermission('taxdocs.approve'), (req, res) => {
+  try {
+    const doc = svc.assignDoc(req.params.id, req.body || {}, req.actor);
+    res.json({ doc, ok: true });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// ─── Bulk upload (drag-drop multiple files at once) ──────────────────────────
+router.post('/bulk', requirePermission('taxdocs.upload'), (req, res) => {
+  try {
+    const { files, ...baseMeta } = req.body || {};
+    if (!Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({ error: 'files array is required.' });
+    }
+    const docs = svc.bulkUpload(files, baseMeta, req.actor);
+    res.json({ docs, count: docs.length, ok: true });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// ─── Secure client upload tokens (staff endpoints) ──────────────────────────
+router.post('/upload-link', requirePermission('taxdocs.upload'), (req, res) => {
+  try {
+    const link = svc.createUploadToken(req.body || {}, req.actor);
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    res.json({ link, url: `${baseUrl}/upload/${link.token}`, ok: true });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+router.get('/upload-links', requirePermission('taxdocs.upload'), (req, res) => {
+  res.json({ links: svc.listUploadTokens() });
+});
+
+router.post('/upload-link/:token/revoke', requirePermission('taxdocs.upload'), (req, res) => {
+  try {
+    const link = svc.revokeUploadToken(req.params.token, req.actor);
+    res.json({ link, ok: true });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

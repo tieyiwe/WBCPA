@@ -541,6 +541,337 @@ function simulateAiExtraction(id, actor) {
   return processDoc(id, tpl, actor);
 }
 
+// ─── Complexity scoring ──────────────────────────────────────────────────────
+// Scores how much pre-tax-prep work a document or client needs. Computed
+// purely from existing fields so it stays in sync as docs move through the
+// workflow. Drives the routing/assignment hints below.
+
+// Doc-type weights — higher = more analysis required from staff.
+const DOC_TYPE_WEIGHT = {
+  'W-2': 5,
+  '1099-MISC': 8,
+  '1099-NEC': 10,
+  '1099-K': 12,
+  'K-1': 25,           // K-1s are notoriously messy (basis, at-risk, passive rules)
+  'Schedule-C': 22,    // Self-employment net — SE tax + QBI analysis
+  '1040': 18,
+  'other': 8
+};
+
+function computeDocComplexity(doc) {
+  if (!doc) return { score: 0, tier: 'simple', reasons: [] };
+  const reasons = [];
+  let score = DOC_TYPE_WEIGHT[doc.doc_type] ?? 8;
+  reasons.push(`${doc.doc_type} base weight ${DOC_TYPE_WEIGHT[doc.doc_type] ?? 8}`);
+
+  // Income-based bumps from extracted data
+  const x = doc.extracted_data || {};
+  const income = Number(x.wages || x.nonemployee_compensation || x.gross_receipts || x.net_profit || x.total_income || 0);
+  if (income > 500000) { score += 25; reasons.push(`Income > $500k (+25)`); }
+  else if (income > 200000) { score += 15; reasons.push(`Income > $200k (+15)`); }
+  else if (income > 100000) { score += 7; reasons.push(`Income > $100k (+7)`); }
+
+  // Multi-state / partnership signals
+  if (x.state && String(x.state).split(/[,;\/]/).length > 1) { score += 10; reasons.push('Multi-state (+10)'); }
+  if (x.partnership_name || x.partner_share_income != null) { score += 12; reasons.push('Partnership K-1 (+12)'); }
+
+  // Status flags
+  if (doc.status === 'rejected') { score += 15; reasons.push('Currently rejected (+15)'); }
+  if (doc.status === 'awaiting_signature' && doc.esign_sent_at) {
+    const days = (Date.now() - new Date(doc.esign_sent_at).getTime()) / 86400000;
+    if (days > 5) { score += 8; reasons.push(`E-sign overdue ${Math.round(days)}d (+8)`); }
+  }
+  if (doc.ai_summary && /audit|notice|cp2000|penalty|levy/i.test(doc.ai_summary)) {
+    score += 20;
+    reasons.push('IRS-notice / audit keywords in AI summary (+20)');
+  }
+
+  score = Math.min(100, Math.round(score));
+  const tier = score >= 60 ? 'complex' : score >= 35 ? 'moderate' : 'simple';
+  return { score, tier, reasons };
+}
+
+function computeClientComplexity(clientId) {
+  const docs = state.docs.filter((d) => d.client_id === clientId);
+  if (!docs.length) return { score: 0, tier: 'simple', reasons: ['No documents on file'], doc_count: 0, doc_types: [] };
+
+  const docScores = docs.map((d) => ({ doc: d, ...computeDocComplexity(d) }));
+  const avgDoc = docScores.reduce((s, d) => s + d.score, 0) / docScores.length;
+  const peakDoc = Math.max(...docScores.map((d) => d.score));
+  let score = Math.round(avgDoc * 0.6 + peakDoc * 0.4);
+
+  const reasons = [];
+  // Variety bump — more distinct doc types = more reconciliation work
+  const types = new Set(docs.map((d) => d.doc_type));
+  if (types.size >= 4) { score = Math.min(100, score + 12); reasons.push(`${types.size} distinct doc types (+12)`); }
+  else if (types.size === 3) { score = Math.min(100, score + 6); reasons.push('3 distinct doc types (+6)'); }
+
+  // Multi-year span
+  const years = new Set(docs.map((d) => d.tax_year));
+  if (years.size > 1) { score = Math.min(100, score + 6); reasons.push(`${years.size} tax years on file (+6)`); }
+
+  // Rejected docs
+  const rejected = docs.filter((d) => d.status === 'rejected').length;
+  if (rejected) { score = Math.min(100, score + 10); reasons.push(`${rejected} rejected doc${rejected > 1 ? 's' : ''} (+10)`); }
+
+  reasons.unshift(`Average doc score ${Math.round(avgDoc)} · peak ${peakDoc}`);
+
+  const tier = score >= 60 ? 'complex' : score >= 35 ? 'moderate' : 'simple';
+  return {
+    score,
+    tier,
+    reasons,
+    doc_count: docs.length,
+    doc_types: Array.from(types),
+    years: Array.from(years).sort(),
+    rejected_count: rejected
+  };
+}
+
+// ─── Auto-routing / assignment ───────────────────────────────────────────────
+// Suggests the best staff member for a doc or client based on expertise +
+// current workload. Workload = open (un-filed) docs currently assigned.
+
+// Doc-type → preferred staff role/skill. Used as a tie-breaker.
+const TYPE_EXPERTISE = {
+  'W-2':          ['staff', 'manager'],
+  '1099-NEC':     ['manager', 'staff'],
+  '1099-K':       ['manager', 'staff'],
+  '1099-MISC':    ['staff', 'manager'],
+  'K-1':          ['admin', 'manager'],    // K-1s need senior eyes
+  '1040':         ['manager', 'admin'],
+  'Schedule-C':   ['manager', 'admin'],
+  'other':        ['staff', 'manager']
+};
+
+function suggestAssignee(docOrClient) {
+  // Lazy require to avoid circular dependency at module-load
+  let team = [];
+  try {
+    const { listTeamMembers } = require('./adminService');
+    team = listTeamMembers().filter((m) => m.status === 'active' && m.role !== 'viewer');
+  } catch { /* empty */ }
+  if (!team.length) return null;
+
+  const isClient = Boolean(docOrClient.doc_count != null);
+  const typesNeeded = isClient ? docOrClient.doc_types : [docOrClient.doc_type];
+  const tier = isClient ? docOrClient.tier : computeDocComplexity(docOrClient).tier;
+
+  // Workload per member: count of open (not filed/rejected) docs assigned
+  const workload = {};
+  for (const m of team) workload[m.id] = 0;
+  for (const d of state.docs) {
+    if (d.assigned_to_id && workload[d.assigned_to_id] != null && !['filed', 'rejected'].includes(d.status)) {
+      workload[d.assigned_to_id] += 1;
+    }
+  }
+
+  // Score each candidate: expertise match + reverse workload + role match for complexity
+  const candidates = team.map((m) => {
+    let score = 0;
+    for (const t of typesNeeded) {
+      const roles = TYPE_EXPERTISE[t] || [];
+      if (roles[0] === m.role) score += 10;
+      else if (roles.includes(m.role)) score += 5;
+    }
+    // Complex tier → push toward admin/manager
+    if (tier === 'complex' && (m.role === 'admin' || m.role === 'manager' || m.role === 'owner')) score += 8;
+    if (tier === 'simple' && m.role === 'staff') score += 3;
+    // Penalize current workload
+    score -= workload[m.id] * 2;
+    return { member: m, score, workload: workload[m.id] };
+  });
+
+  candidates.sort((a, b) => b.score - a.score);
+  const top = candidates[0];
+  return top ? {
+    id: top.member.id,
+    name: top.member.name,
+    role: top.member.role,
+    title: top.member.title,
+    current_workload: top.workload,
+    score: top.score,
+    alternatives: candidates.slice(1, 3).map((c) => ({ id: c.member.id, name: c.member.name, current_workload: c.workload }))
+  } : null;
+}
+
+function assignDoc(id, { assignee_id, assignee_name }, actor) {
+  const doc = getDoc(id);
+  if (!doc) { const e = new Error('Document not found.'); e.status = 404; throw e; }
+  doc.assigned_to_id = assignee_id || null;
+  doc.assigned_to_name = assignee_name || null;
+  doc.assigned_at = assignee_id ? nowIso() : null;
+  logActivity({
+    actor,
+    action: 'taxdoc.assigned',
+    target_type: 'tax_doc',
+    target_id: doc.id,
+    target_label: doc.filename,
+    summary: assignee_id ? `Assigned to ${assignee_name}` : 'Unassigned'
+  });
+  return doc;
+}
+
+// ─── Client-grouped summary ──────────────────────────────────────────────────
+function listClients() {
+  const groups = {};
+  for (const d of state.docs) {
+    const key = d.client_id || `_unknown_${d.client_name}`;
+    if (!groups[key]) {
+      groups[key] = {
+        client_id: d.client_id,
+        client_name: d.client_name,
+        client_email: d.client_email,
+        client_phone: d.client_phone,
+        docs: []
+      };
+    }
+    groups[key].docs.push(d);
+  }
+  return Object.values(groups).map((g) => {
+    const complexity = computeClientComplexity(g.client_id);
+    const statusCounts = {};
+    STATUS_ORDER.forEach((s) => { statusCounts[s] = g.docs.filter((d) => d.status === s).length; });
+    const pending_action = g.docs.filter((d) => ['uploaded', 'processing', 'review', 'approved'].includes(d.status)).length;
+    return {
+      ...g,
+      complexity,
+      status_counts: statusCounts,
+      pending_action,
+      suggested_assignee: suggestAssignee({ ...complexity })
+    };
+  }).sort((a, b) => b.complexity.score - a.complexity.score); // most complex first
+}
+
+// ─── Bulk upload with filename-based auto-classification ────────────────────
+function classifyFromFilename(filename) {
+  const f = String(filename).toLowerCase();
+  // Detect tax year (4-digit year in the filename)
+  let tax_year = null;
+  const yearMatch = f.match(/20(2[0-9]|1[0-9])/);
+  if (yearMatch) tax_year = Number(yearMatch[0]);
+
+  // Detect doc type from common patterns
+  let doc_type = 'other';
+  if (/\bw[-_ ]?2\b/.test(f))                              doc_type = 'W-2';
+  else if (/1099[-_ ]?nec/.test(f))                        doc_type = '1099-NEC';
+  else if (/1099[-_ ]?k\b/.test(f))                        doc_type = '1099-K';
+  else if (/1099[-_ ]?misc/.test(f))                       doc_type = '1099-MISC';
+  else if (/\b1099\b/.test(f))                             doc_type = '1099-MISC';
+  else if (/\bk[-_ ]?1\b/.test(f) || /\bk1\b/.test(f))     doc_type = 'K-1';
+  else if (/schedule[-_ ]?c\b|sch[-_ ]?c\b/.test(f))       doc_type = 'Schedule-C';
+  else if (/\b1040\b/.test(f))                             doc_type = '1040';
+
+  return { doc_type, tax_year: tax_year || (new Date().getFullYear() - 1) };
+}
+
+function bulkUpload(files, baseMeta, actor) {
+  const results = [];
+  for (const f of files || []) {
+    const cls = classifyFromFilename(f.filename || f.name || '');
+    const meta = {
+      client_id: f.client_id || baseMeta?.client_id,
+      client_name: f.client_name || baseMeta?.client_name,
+      client_email: f.client_email || baseMeta?.client_email,
+      client_phone: f.client_phone || baseMeta?.client_phone,
+      doc_type: f.doc_type || cls.doc_type,
+      tax_year: f.tax_year || cls.tax_year,
+      filename: f.filename || f.name,
+      file_size: f.file_size || f.size || 0,
+      notes: f.notes || baseMeta?.notes
+    };
+    const doc = uploadDoc(meta, actor);
+    if (f.source) doc.upload_source = f.source;
+    results.push(doc);
+  }
+  if (results.length) {
+    logActivity({
+      actor,
+      action: 'taxdoc.bulk_upload',
+      target_type: 'tax_doc_batch',
+      target_id: results[0].id,
+      target_label: `${results.length} documents`,
+      summary: `Bulk-uploaded ${results.length} documents${baseMeta?.client_name ? ` for ${baseMeta.client_name}` : ''}`
+    });
+  }
+  return results;
+}
+
+// ─── Secure client upload portal (token-based) ──────────────────────────────
+// Staff creates a token tied to a client; client visits /upload/<token> and
+// drops files without authenticating. Files appear in the workflow tagged
+// as `upload_source: 'client_portal'`.
+
+const uploadTokens = {};
+
+function createUploadToken({ client_id, client_name, client_email, client_phone, message, expires_in_days = 30 }, actor) {
+  if (!client_id && !client_name) {
+    const e = new Error('client_id or client_name required.'); e.status = 400; throw e;
+  }
+  const token = `cup_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+  const expires_at = new Date(Date.now() + expires_in_days * 86400000).toISOString();
+  uploadTokens[token] = {
+    token,
+    client_id: client_id || null,
+    client_name,
+    client_email: client_email || null,
+    client_phone: client_phone || null,
+    message: message || 'Please upload your tax documents securely. Drag any number of files — we accept W-2s, 1099s, K-1s, prior-year returns, and any other tax-related document.',
+    created_by_id: actor?.id || null,
+    created_by_name: actor?.name || null,
+    created_at: nowIso(),
+    expires_at,
+    used_count: 0,
+    revoked: false
+  };
+  logActivity({
+    actor,
+    action: 'taxdoc.upload_link_created',
+    target_type: 'upload_token',
+    target_id: token,
+    target_label: client_name,
+    summary: `Secure upload link created for ${client_name} (expires ${new Date(expires_at).toLocaleDateString()})`
+  });
+  return uploadTokens[token];
+}
+
+function validateUploadToken(token) {
+  const t = uploadTokens[token];
+  if (!t) return null;
+  if (t.revoked) return null;
+  if (new Date(t.expires_at).getTime() < Date.now()) return null;
+  return t;
+}
+
+function consumeUploadToken(token, files) {
+  const t = validateUploadToken(token);
+  if (!t) { const e = new Error('Invalid or expired upload link.'); e.status = 404; throw e; }
+  const actor = { id: 'client_portal', name: t.client_name || 'Client portal upload', role: 'owner' };
+  const results = bulkUpload(files, {
+    client_id: t.client_id,
+    client_name: t.client_name,
+    client_email: t.client_email,
+    client_phone: t.client_phone,
+    notes: 'Uploaded via secure client portal'
+  }, actor);
+  results.forEach((doc) => { doc.upload_source = 'client_portal'; });
+  t.used_count += 1;
+  t.last_used_at = nowIso();
+  return { token, accepted: results.length, docs: results };
+}
+
+function listUploadTokens() {
+  return Object.values(uploadTokens).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+}
+
+function revokeUploadToken(token, actor) {
+  const t = uploadTokens[token];
+  if (!t) { const e = new Error('Token not found.'); e.status = 404; throw e; }
+  t.revoked = true;
+  logActivity({ actor, action: 'taxdoc.upload_link_revoked', target_type: 'upload_token', target_id: token, target_label: t.client_name, summary: 'Revoked upload link' });
+  return t;
+}
+
 module.exports = {
   listDocs,
   getDoc,
@@ -554,5 +885,18 @@ module.exports = {
   markFiled,
   addNote,
   simulateAiExtraction,
-  STATUS_ORDER
+  STATUS_ORDER,
+  // New
+  computeDocComplexity,
+  computeClientComplexity,
+  suggestAssignee,
+  assignDoc,
+  listClients,
+  classifyFromFilename,
+  bulkUpload,
+  createUploadToken,
+  validateUploadToken,
+  consumeUploadToken,
+  listUploadTokens,
+  revokeUploadToken
 };

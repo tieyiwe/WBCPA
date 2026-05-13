@@ -17,7 +17,7 @@ const NAV = [
     label: 'Voice Agent',
     items: [
       { to: '/dashboard/calls', icon: '☏', title: 'Call Log', permission: 'calls.view' },
-      { to: '/dashboard/agent', icon: '✦', title: 'Agent + Bland Connection', permission: 'agent.view' }
+      { to: '/dashboard/agent', icon: '✦', title: 'Celine — Voice Agent', permission: 'agent.view' }
     ]
   },
   {
@@ -61,7 +61,7 @@ const NAV = [
   {
     label: 'Setup',
     items: [
-      { to: '/dashboard/setup', icon: '⚙', title: 'Setup Guide', permission: 'dashboard.view' }
+      { to: '/dashboard/setup', icon: '⚙', title: 'Setup Guide', permission: 'setup.view' }
     ]
   }
 ];
