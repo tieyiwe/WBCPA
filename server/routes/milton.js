@@ -38,4 +38,13 @@ router.get('/session', requirePermission('milton.use'), (req, res) => {
   res.json({ session });
 });
 
+// GET /api/milton/nudges — personalized reminders for the current actor
+router.get('/nudges', requirePermission('milton.use'), (req, res) => {
+  try {
+    res.json(miltonSvc.getNudges(req.actor));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

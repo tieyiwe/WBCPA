@@ -142,7 +142,7 @@ export default function Milton() {
             <div>
               <div style={{ fontWeight: 700, fontSize: '1.05rem' }}>Milton</div>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                WBCPA's AI Tax Advisor · Live view of clients, calls, docs, escalations · IRS + general finance knowledge
+                I'm your super agent. Live view of clients, calls, docs, escalations · IRS + general finance knowledge
               </div>
             </div>
           </div>

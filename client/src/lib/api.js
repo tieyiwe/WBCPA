@@ -207,3 +207,4 @@ export const miltonChat = (message) =>
 export const miltonClearSession = () =>
   request('/milton/chat', { method: 'DELETE' });
 export const miltonGetSession = () => request('/milton/session');
+export const miltonGetNudges = () => request('/milton/nudges');

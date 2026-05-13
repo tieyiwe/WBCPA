@@ -162,12 +162,115 @@ const TOOLS = [
       type: 'object',
       properties: {}
     }
+  },
+
+  // ─── WRITE / ACTION tools ────────────────────────────────────────────────
+  // These let Milton actually perform work in the app on the staff member's
+  // behalf. CONFIRM with the user before any irreversible action and report
+  // back what changed.
+
+  {
+    name: 'process_tax_document',
+    description: 'Run AI extraction on a document currently in "uploaded" or "processing" status. Moves it to "review" with extracted_data and an AI summary populated. Use when staff says "process Marcus\'s W-2" or "extract data from doc tdoc_X".',
+    input_schema: {
+      type: 'object',
+      properties: { doc_id: { type: 'string', description: 'The tax-doc ID, e.g. tdoc_005' } },
+      required: ['doc_id']
+    }
+  },
+  {
+    name: 'approve_tax_document',
+    description: 'Approve a tax document that is currently in "review" or "rejected" status. Use when staff explicitly asks to approve a specific doc.',
+    input_schema: {
+      type: 'object',
+      properties: { doc_id: { type: 'string' } },
+      required: ['doc_id']
+    }
+  },
+  {
+    name: 'reject_tax_document',
+    description: 'Reject a tax document with a stated reason. Use only when staff explicitly asks.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        doc_id: { type: 'string' },
+        reason: { type: 'string', description: 'Plain-language reason for rejection (will be logged + shown to staff)' }
+      },
+      required: ['doc_id', 'reason']
+    }
+  },
+  {
+    name: 'send_tax_document_for_signature',
+    description: 'Send an APPROVED tax document to the client for e-signature. Generates a tokenized signing link and changes status to "awaiting_signature". Confirm with staff before sending — this triggers a client-visible action.',
+    input_schema: {
+      type: 'object',
+      properties: { doc_id: { type: 'string' } },
+      required: ['doc_id']
+    }
+  },
+  {
+    name: 'record_tax_document_signed',
+    description: 'Mark an awaiting-signature document as signed (after the client returns it offline or via the e-sign portal).',
+    input_schema: {
+      type: 'object',
+      properties: { doc_id: { type: 'string' } },
+      required: ['doc_id']
+    }
+  },
+  {
+    name: 'mark_tax_document_filed',
+    description: 'Mark a signed (or approved) tax document as filed with the taxing authority. This is the terminal state in the workflow.',
+    input_schema: {
+      type: 'object',
+      properties: { doc_id: { type: 'string' } },
+      required: ['doc_id']
+    }
+  },
+  {
+    name: 'assign_tax_document',
+    description: 'Assign a tax document to a specific staff member. Use search_clients or get_workspace_pulse beforehand if you need to confirm the assignee\'s ID or name.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        doc_id: { type: 'string' },
+        assignee_id: { type: 'string', description: 'Team member ID (tm_001 etc.). Optional if assignee_name uniquely identifies.' },
+        assignee_name: { type: 'string', description: 'Team member full name as fallback.' }
+      },
+      required: ['doc_id']
+    }
+  },
+  {
+    name: 'create_client_upload_link',
+    description: 'Generate a secure upload link to send to a client so they can drop tax documents into the workflow without logging in. Returns a token-based URL and expiration date. Use when staff says "send Sarah an upload link" or "I need to collect tax docs from Marcus".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        client_id: { type: 'string', description: 'Subscriber ID (sub_xxx). Use search_clients to look up if not provided.' },
+        client_name: { type: 'string', description: 'Client full name (required if client_id unknown).' },
+        client_email: { type: 'string' },
+        client_phone: { type: 'string' },
+        message: { type: 'string', description: 'Custom message the client sees on the upload page. Default if omitted.' },
+        expires_in_days: { type: 'number', description: 'Link validity in days. Default 14, max 90.' }
+      }
+    }
+  },
+  {
+    name: 'add_tax_document_note',
+    description: 'Append an internal note to a tax document (visible to staff only). Use to record analysis observations, client interactions, or hand-off context.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        doc_id: { type: 'string' },
+        note: { type: 'string' }
+      },
+      required: ['doc_id', 'note']
+    }
   }
 ];
 
 // ── Tool execution ────────────────────────────────────────────────────────────
 
-function executeTool(name, args) {
+function executeTool(name, args, actor) {
   try {
     const { MOCK_SUBSCRIBERS, MOCK_CALLS, MOCK_APPOINTMENTS, MOCK_TASKS } = require('./mockData');
     const taxSvc = require('./taxDocService');
@@ -283,6 +386,79 @@ function executeTool(name, args) {
           upcoming_appointments: upcomingAppts,
           open_tasks: openTasks
         };
+      }
+
+      // ── Write actions ────────────────────────────────────────────────
+      case 'process_tax_document': {
+        const doc = taxSvc.simulateAiExtraction(args.doc_id, actor || { id: 'milton', name: 'Milton' });
+        return { ok: true, doc, message: `Processed ${doc.filename} — extracted ${Object.keys(doc.extracted_data || {}).length} fields, now in review.` };
+      }
+      case 'approve_tax_document': {
+        const doc = taxSvc.approveDoc(args.doc_id, actor || { id: 'milton', name: 'Milton' });
+        return { ok: true, doc, message: `Approved ${doc.filename} for ${doc.client_name}.` };
+      }
+      case 'reject_tax_document': {
+        const doc = taxSvc.rejectDoc(args.doc_id, { reason: args.reason }, actor || { id: 'milton', name: 'Milton' });
+        return { ok: true, doc, message: `Rejected ${doc.filename}. Reason logged.` };
+      }
+      case 'send_tax_document_for_signature': {
+        // sendForSignature is async in the service — but executeTool isn't async.
+        // Mock implementation does its work synchronously; the Promise just resolves.
+        // We'll use the synchronous path by calling the underlying flow directly.
+        const doc = taxSvc.getDoc(args.doc_id);
+        if (!doc) return { error: 'Document not found.' };
+        if (doc.status !== 'approved') return { error: `Cannot send for signature — doc is in "${doc.status}" status, must be "approved".` };
+        const token = `tok_${Math.random().toString(36).slice(2, 14)}`;
+        doc.status = 'awaiting_signature';
+        doc.esign_token = token;
+        doc.esign_url = `/esign/${token}`;
+        doc.esign_sent_at = new Date().toISOString();
+        try {
+          const { logActivity } = require('./adminService');
+          logActivity({ actor: actor || { id: 'milton', name: 'Milton' }, action: 'taxdoc.esign_sent', target_type: 'tax_doc', target_id: doc.id, target_label: doc.filename, summary: `E-signature request sent to ${doc.client_email || doc.client_name}` });
+        } catch { /* empty */ }
+        return { ok: true, doc, esign_url: doc.esign_url, message: `E-signature link generated for ${doc.client_name}. In production this would email ${doc.client_email || 'the client'} automatically.` };
+      }
+      case 'record_tax_document_signed': {
+        const doc = taxSvc.recordSigned(args.doc_id, actor || { id: 'milton', name: 'Milton' });
+        return { ok: true, doc, message: `Recorded ${doc.client_name}'s signature on ${doc.filename}.` };
+      }
+      case 'mark_tax_document_filed': {
+        const doc = taxSvc.markFiled(args.doc_id, actor || { id: 'milton', name: 'Milton' });
+        return { ok: true, doc, message: `Filed ${doc.filename} for ${doc.client_name} (${doc.tax_year}).` };
+      }
+      case 'assign_tax_document': {
+        let { assignee_id, assignee_name } = args;
+        if (!assignee_id && assignee_name) {
+          try {
+            const { listTeamMembers } = require('./adminService');
+            const match = listTeamMembers().find((m) => m.name.toLowerCase() === String(assignee_name).toLowerCase());
+            if (match) assignee_id = match.id;
+          } catch { /* empty */ }
+        }
+        const doc = taxSvc.assignDoc(args.doc_id, { assignee_id, assignee_name }, actor || { id: 'milton', name: 'Milton' });
+        return { ok: true, doc, message: `Assigned ${doc.filename} to ${doc.assigned_to_name || 'unassigned'}.` };
+      }
+      case 'create_client_upload_link': {
+        let { client_id, client_name, client_email, client_phone } = args;
+        if (!client_name && client_id) {
+          const { MOCK_SUBSCRIBERS: SUBS } = require('./mockData');
+          const c = SUBS.find((s) => s.id === client_id);
+          if (c) { client_name = c.name; client_email = client_email || c.email; client_phone = client_phone || c.phone; }
+        }
+        if (!client_name) return { error: 'Need at least client_name or a valid client_id.' };
+        const link = taxSvc.createUploadToken({
+          client_id, client_name, client_email, client_phone,
+          message: args.message,
+          expires_in_days: args.expires_in_days || 14
+        }, actor || { id: 'milton', name: 'Milton' });
+        const baseUrl = process.env.REPLIT_URL || 'http://localhost:3000';
+        const url = `${baseUrl}/upload/${link.token}`;
+        return { ok: true, link, url, message: `Upload link generated for ${client_name}. Share this URL: ${url} (expires ${new Date(link.expires_at).toLocaleDateString()}).` };
+      }
+      case 'add_tax_document_note': {
+        const doc = taxSvc.addNote(args.doc_id, { note: args.note }, actor || { id: 'milton', name: 'Milton' });
+        return { ok: true, doc, message: `Note added to ${doc.filename}.` };
       }
 
       default:
@@ -432,6 +608,24 @@ You have **real-time read access** to everything happening in the WBCPA workspac
 - **get_email_queue** — emails awaiting human review/response
 - **get_tasks** — internal task board
 - **search_irs_guidance** — your built-in IRS knowledge base (S-Corp, QBI, 1031, Backdoor Roth, depreciation, home office, estimated tax, K-1, audit, CP2000, cost basis, etc.)
+
+You also have **WRITE/ACTION tools** that let you actually perform work on the staff member's behalf — not just answer questions:
+- **process_tax_document** — run AI extraction on an uploaded doc, moving it to "review" stage with extracted fields populated.
+- **approve_tax_document** — approve a doc that's in review.
+- **reject_tax_document** — reject a doc with a stated reason (logged).
+- **send_tax_document_for_signature** — generate and send an e-signature link to the client. **This is client-visible** — always confirm with staff before calling.
+- **record_tax_document_signed** — mark a doc as signed once the client returns it.
+- **mark_tax_document_filed** — mark a doc as filed with the taxing authority. Terminal stage.
+- **assign_tax_document** — route a doc to a specific staff member.
+- **create_client_upload_link** — generate a tokenized secure-upload URL the staff can text/email to a client so they can drop docs without logging in.
+- **add_tax_document_note** — append an internal note to a doc.
+
+## Acting on the staff member's behalf
+- When staff says "process Marcus's W-2", "approve the Schedule-C", "send Sarah for signature", or "mark filed" — call the matching tool, then briefly confirm what you did + the doc ID/filename.
+- When staff says "send Marcus an upload link" — use **create_client_upload_link** and return the URL so they can paste it into an email/text.
+- **Confirm before any client-visible action** (sending for signature, generating upload links). For internal-only actions (process, approve, assign, note, mark filed), you can act directly when the request is clear.
+- **Refuse to reject without a stated reason.** If the user asks to reject and didn't say why, ask them first.
+- After every successful write, state the result concretely: *"Approved tdoc_002 (Marcus Johnson's 1099-MISC, 2024). It's now ready for e-signature — want me to send it?"*
 
 ## How you work
 - **Proactive, not just reactive.** When relevant — especially at the start of a conversation or on vague prompts like "anything I should look at?" — call **get_workspace_pulse** and surface specific urgent items by client name, document, or escalation ID. Don't wait to be asked.
@@ -674,7 +868,7 @@ async function chat(actorId, actorInfo, userMessage) {
       const toolResults = toolUseBlocks.map((tu) => ({
         type: 'tool_result',
         tool_use_id: tu.id,
-        content: JSON.stringify(executeTool(tu.name, tu.input || {}))
+        content: JSON.stringify(executeTool(tu.name, tu.input || {}, actorInfo))
       }));
       currentMessages.push({ role: 'user', content: toolResults });
       continue;
@@ -696,4 +890,118 @@ async function chat(actorId, actorInfo, userMessage) {
   return { reply: fallback, messages: session.messages };
 }
 
-module.exports = { chat, getSession, clearSession };
+// ─── Personal nudges (drives the widget pulse + per-employee reminders) ─────
+// Returns the actor's specific to-do list across tasks, escalations, docs,
+// and callbacks. Sorted by urgency so the most critical item is first.
+function getNudges(actor) {
+  if (!actor || !actor.id) return { nudges: [], count: 0, urgent_count: 0 };
+
+  const nudges = [];
+  const now = Date.now();
+  const { MOCK_TASKS, MOCK_CALLS } = require('./mockData');
+  const taxSvc = require('./taxDocService');
+  const escSvc = require('./escalationService');
+
+  // 1. Tasks assigned to this user that aren't done
+  for (const t of (MOCK_TASKS || [])) {
+    if (t.status === 'done') continue;
+    if (t.assigned_to_id !== actor.id && t.assigned_to_name !== actor.name) continue;
+    let severity = 'normal';
+    let dueLabel = '';
+    if (t.due_at) {
+      const days = (new Date(t.due_at).getTime() - now) / 86400000;
+      if (days < 0) { severity = 'urgent'; dueLabel = `overdue by ${Math.abs(Math.round(days))}d`; }
+      else if (days < 1) { severity = 'urgent'; dueLabel = 'due today'; }
+      else if (days < 3) { severity = 'normal'; dueLabel = `due in ${Math.round(days)}d`; }
+      else { dueLabel = `due in ${Math.round(days)}d`; }
+    }
+    if (t.priority === 'high' || t.priority === 'urgent') severity = 'urgent';
+    nudges.push({
+      id: `nudge_task_${t.id}`,
+      kind: 'task',
+      severity,
+      title: t.title || t.subject,
+      detail: dueLabel || (t.priority ? `${t.priority} priority` : 'In progress'),
+      action_label: 'Open task board',
+      action_url: '/dashboard/admin/tasks'
+    });
+  }
+
+  // 2. Escalations this user has claimed but not resolved
+  try {
+    const mine = escSvc.listEscalations({ scope: 'mine', claimed_by_id: actor.id });
+    for (const e of mine) {
+      const ageHours = (now - new Date(e.claimed_at || e.created_at).getTime()) / 3600000;
+      let severity = e.urgency === 'high' ? 'urgent' : 'normal';
+      if (ageHours > 24) severity = 'urgent';
+      nudges.push({
+        id: `nudge_esc_${e.id}`,
+        kind: 'escalation',
+        severity,
+        title: e.subject,
+        detail: `${e.client_name} · claimed ${ageHours < 1 ? `${Math.round(ageHours * 60)}m` : `${Math.round(ageHours)}h`} ago`,
+        action_label: 'Open escalation',
+        action_url: '/dashboard/escalations?scope=mine'
+      });
+    }
+  } catch { /* empty */ }
+
+  // 3. Tax docs assigned to this user that need action
+  try {
+    const docs = taxSvc.listDocs();
+    for (const d of docs) {
+      if (d.assigned_to_id !== actor.id) continue;
+      if (['filed', 'rejected'].includes(d.status)) continue;
+      let severity = 'normal';
+      let detail = `${d.client_name} · ${d.doc_type} ${d.tax_year}`;
+      if (d.status === 'awaiting_signature' && d.esign_sent_at) {
+        const days = (now - new Date(d.esign_sent_at).getTime()) / 86400000;
+        if (days > 5) {
+          severity = 'urgent';
+          detail = `${d.client_name} · e-sign overdue ${Math.round(days)}d`;
+        }
+      }
+      if (d.status === 'review') severity = 'normal';
+      nudges.push({
+        id: `nudge_doc_${d.id}`,
+        kind: 'doc',
+        severity,
+        title: `${d.doc_type}: ${d.filename}`,
+        detail,
+        action_label: 'Open document',
+        action_url: `/dashboard/taxdocs?status=${d.status}`
+      });
+    }
+  } catch { /* empty */ }
+
+  // 4. Recent action-needed calls (system-wide, owner/super_owner sees all;
+  //    others only see calls they care about — keep it simple, show all unhandled)
+  for (const c of (MOCK_CALLS || [])) {
+    if (!c.action_needed) continue;
+    const ageHours = (now - new Date(c.called_at).getTime()) / 3600000;
+    if (ageHours > 48) continue; // ignore stale call flags
+    nudges.push({
+      id: `nudge_call_${c.id}`,
+      kind: 'callback',
+      severity: ageHours < 2 ? 'urgent' : 'normal',
+      title: `Callback: ${c.client_name}`,
+      detail: `${c.caller_number || ''} · ${(c.summary || '').slice(0, 80)}`,
+      action_label: 'View call',
+      action_url: `/dashboard/calls?callId=${c.id}`
+    });
+  }
+
+  // Sort urgent first, then by recency
+  nudges.sort((a, b) => {
+    if (a.severity !== b.severity) return a.severity === 'urgent' ? -1 : 1;
+    return 0;
+  });
+
+  return {
+    nudges,
+    count: nudges.length,
+    urgent_count: nudges.filter((n) => n.severity === 'urgent').length
+  };
+}
+
+module.exports = { chat, getSession, clearSession, getNudges };

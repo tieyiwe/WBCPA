@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, Link } from 'react-router-dom';
-import { miltonChat, miltonClearSession, miltonGetSession } from '../lib/api.js';
+import { miltonChat, miltonClearSession, miltonGetSession, miltonGetNudges } from '../lib/api.js';
 import { useRole } from '../lib/roleContext.jsx';
 
 // Floating Milton — appears on every dashboard page (except the full Milton page)
@@ -16,6 +16,7 @@ export default function MiltonWidget() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
   const [hasUnread, setHasUnread] = useState(false);
+  const [nudges, setNudges] = useState({ nudges: [], count: 0, urgent_count: 0 });
   const endRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -41,6 +42,19 @@ export default function MiltonWidget() {
   useEffect(() => {
     if (!hidden && open && endRef.current) endRef.current.scrollIntoView({ behavior: 'smooth' });
   }, [messages, open, hidden]);
+
+  // Personal nudge polling — drives the urgent-pulse state on the launcher.
+  useEffect(() => {
+    if (hidden) return;
+    let mounted = true;
+    async function tick() {
+      const data = await miltonGetNudges().catch(() => null);
+      if (mounted && data) setNudges(data);
+    }
+    tick();
+    const interval = setInterval(tick, 60000);
+    return () => { mounted = false; clearInterval(interval); };
+  }, [hidden]);
 
   async function sendMessage(text) {
     const msg = (text || input).trim();
@@ -76,25 +90,39 @@ export default function MiltonWidget() {
       <button
         onClick={() => setOpen(true)}
         aria-label="Open Milton chat"
+        className={`milton-launcher${nudges.urgent_count > 0 ? ' milton-launcher-urgent' : ''}`}
         style={{
           position: 'fixed', bottom: 20, right: 20, zIndex: 90,
-          width: 60, height: 60, borderRadius: '50%', border: 'none',
-          background: 'linear-gradient(135deg, var(--gold) 0%, var(--olive-deep) 100%)',
-          color: '#fff', cursor: 'pointer',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(201,168,76,0.4)',
+          width: 64, height: 64, borderRadius: '50%', border: 'none',
+          background: 'linear-gradient(135deg, #e8c97a 0%, #c9a84c 55%, #a88820 100%)',
+          color: '#3a2c08', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontFamily: 'var(--font-display)', fontSize: '1.6rem', fontWeight: 700,
-          transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+          fontFamily: 'var(--font-display)', fontSize: '1.7rem', fontWeight: 700,
+          textShadow: '0 1px 1px rgba(255,255,255,0.35)'
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.06)'; }}
+        onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.08)'; }}
         onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+        title={nudges.count > 0 ? `${nudges.count} reminder${nudges.count === 1 ? '' : 's'} — open Milton` : 'Milton — your super agent'}
       >
         M
-        {hasUnread && (
+        {nudges.count > 0 && (
+          <span style={{
+            position: 'absolute', top: -2, right: -2,
+            minWidth: 22, height: 22, padding: '0 6px',
+            borderRadius: 999,
+            background: nudges.urgent_count > 0 ? 'var(--error)' : 'var(--terracotta)',
+            color: '#fff', border: '2px solid #fff',
+            fontFamily: 'var(--font-body)', fontSize: '0.72rem', fontWeight: 700,
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center'
+          }}>
+            {nudges.count}
+          </span>
+        )}
+        {hasUnread && nudges.count === 0 && (
           <span style={{
             position: 'absolute', top: 4, right: 4,
             width: 12, height: 12, borderRadius: '50%',
-            background: 'var(--error)', border: '2px solid var(--bg-canvas)'
+            background: 'var(--error)', border: '2px solid #fff'
           }} />
         )}
       </button>
@@ -130,7 +158,7 @@ export default function MiltonWidget() {
           <div style={{ fontWeight: 700, fontSize: '0.92rem' }}>Milton</div>
           <div style={{ fontSize: '0.72rem', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: 4 }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)' }} />
-            Online · AI Tax Advisor
+            Online. I'm your super agent.
           </div>
         </div>
         {messages.length > 0 && (
@@ -156,11 +184,42 @@ export default function MiltonWidget() {
       {/* Messages */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px', background: 'var(--bg-surface)' }}>
         {empty && (
-          <div style={{ textAlign: 'center', padding: '12px 0 8px' }}>
-            <div style={{ fontSize: '0.92rem', fontWeight: 600, marginBottom: 6 }}>Hi, I'm Milton 👋</div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 14 }}>
-              Ask me about a client, an IRS rule, a tax doc, or what to focus on right now.
+          <div style={{ padding: '12px 0 8px' }}>
+            <div style={{ textAlign: 'center', marginBottom: 14 }}>
+              <div style={{ fontSize: '0.92rem', fontWeight: 600, marginBottom: 6 }}>Hi, I'm Milton 👋</div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                Ask me about a client, an IRS rule, a tax doc, or what to focus on right now.
+              </div>
             </div>
+
+            {nudges.count > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ color: nudges.urgent_count ? 'var(--error)' : 'var(--gold)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700, marginBottom: 6 }}>
+                  Your reminders ({nudges.count}{nudges.urgent_count ? ` · ${nudges.urgent_count} urgent` : ''})
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {nudges.nudges.slice(0, 5).map((n) => (
+                    <a key={n.id} href={n.action_url}
+                       style={{
+                         display: 'flex', alignItems: 'flex-start', gap: 8,
+                         padding: '8px 10px', borderRadius: 8, textDecoration: 'none',
+                         background: n.severity === 'urgent' ? 'rgba(184,58,38,0.07)' : 'var(--bg-elev-2)',
+                         border: `1px solid ${n.severity === 'urgent' ? 'rgba(184,58,38,0.35)' : 'var(--border)'}`,
+                         color: 'var(--text)'
+                       }}>
+                      <span style={{ fontSize: '0.95rem', flex: 'none' }}>
+                        {n.kind === 'task' ? '▤' : n.kind === 'escalation' ? '⚠' : n.kind === 'doc' ? '◧' : '☏'}
+                      </span>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '0.82rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.title}</div>
+                        <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>{n.detail}</div>
+                      </span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {[
                 'What should I focus on right now?',
