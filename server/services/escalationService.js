@@ -166,6 +166,9 @@ function enqueue(payload) {
     resolved_at: null,
     resolution_notes: null,
     ai_handoff_summary: payload.ai_handoff_summary || '',
+    // 'bland_agent' = mid-call/post-call from the AI voice agent (blinks).
+    // 'manual' = staff-created (no blink). 'email_agent' = AI email triage.
+    source: payload.source || 'bland_agent',
     created_at: nowIso()
   };
   state.queue.unshift(item);

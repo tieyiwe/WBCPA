@@ -242,6 +242,14 @@ function EscalationCard({ item, can, role, pending, recentlyAccepted, isNew, onA
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
             <span className={`badge ${URGENCY_BADGE[item.urgency]}`}>{item.urgency} urgency</span>
             <span className="badge badge-muted">{item.type}</span>
+            {item.source === 'bland_agent' && (
+              <span className="badge" style={{
+                background: 'rgba(184,98,58,0.12)',
+                color: 'var(--terracotta)',
+                border: '1px solid rgba(184,98,58,0.4)',
+                fontWeight: 600
+              }}>📞 From Bland AI</span>
+            )}
             {isClaimed && (
               <span className="badge badge-green">
                 ✓ Accepted by {item.claimed_by_name}
@@ -303,7 +311,13 @@ function EscalationCard({ item, can, role, pending, recentlyAccepted, isNew, onA
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 160, alignItems: 'stretch' }}>
             {item.status === 'open' && can('emails.respond') && (
               <button
-                className={`btn ${recentlyAccepted ? 'btn-accepted' : 'btn-gold btn-accept-blink'}`}
+                className={`btn ${
+                  recentlyAccepted
+                    ? 'btn-accepted'
+                    : item.source === 'bland_agent'
+                      ? 'btn-gold btn-accept-blink'
+                      : 'btn-gold'
+                }`}
                 onClick={() => onAccept(item)}
                 disabled={pending}
               >
