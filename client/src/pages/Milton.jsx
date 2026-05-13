@@ -25,20 +25,22 @@ export default function Milton() {
   const endRef = useRef(null);
   const inputRef = useRef(null);
 
-  if (!can('milton.use')) return <AccessDenied permission="milton.use" />;
+  const canUse = can('milton.use');
 
   useEffect(() => {
+    if (!canUse) return;
     miltonGetSession().then((data) => {
       if (data?.session?.messages?.length) {
         setMessages(data.session.messages);
       }
       setSessionLoaded(true);
     });
-  }, []);
+  }, [canUse]);
 
   // Live workspace pulse — refreshes every 30s so Milton's empty state can
   // surface smart reminders the staff actually needs to act on.
   useEffect(() => {
+    if (!canUse) return;
     async function loadPulse() {
       const [esc, docs, queue] = await Promise.all([
         getEscalationSummary().catch(() => null),
@@ -56,11 +58,15 @@ export default function Milton() {
     loadPulse();
     const interval = setInterval(loadPulse, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [canUse]);
 
   useEffect(() => {
     if (endRef.current) endRef.current.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Render gate — AFTER all hooks. Conditional rendering must never change
+  // the hook count between renders.
+  if (!canUse) return <AccessDenied permission="milton.use" />;
 
   async function sendMessage(text) {
     const msg = (text || input).trim();

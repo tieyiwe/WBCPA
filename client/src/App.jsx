@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import Sidebar from './components/Sidebar.jsx';
 import Topbar from './components/Topbar.jsx';
 import MiltonWidget from './components/MiltonWidget.jsx';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Calls from './pages/Calls.jsx';
 import AgentConfig from './pages/AgentConfig.jsx';
@@ -28,9 +29,13 @@ function ProtectedLayout() {
       <Sidebar />
       <div className="main">
         <Topbar />
-        <Outlet />
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
       </div>
-      <MiltonWidget />
+      <ErrorBoundary>
+        <MiltonWidget />
+      </ErrorBoundary>
     </div>
   );
 }

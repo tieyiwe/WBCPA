@@ -19,14 +19,16 @@ export default function MiltonWidget() {
   const endRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Don't render the widget on the full-page Milton route (avoid duplicate UI)
-  if (location.pathname.startsWith('/dashboard/milton')) return null;
-  if (!can('milton.use')) return null;
+  // Derived gates (NOT early returns — those would change the hook count
+  // between renders and crash React when navigating to /dashboard/milton).
+  const onMiltonPage = location.pathname.startsWith('/dashboard/milton');
+  const canUse = can('milton.use');
+  const hidden = onMiltonPage || !canUse;
 
   // Load session whenever the widget opens, so it stays in sync with the
   // full-page Milton view across navigation.
   useEffect(() => {
-    if (!open) return;
+    if (hidden || !open) return;
     miltonGetSession().then((data) => {
       if (data?.session?.messages?.length) {
         setMessages(data.session.messages);
@@ -34,11 +36,11 @@ export default function MiltonWidget() {
       }
     });
     setTimeout(() => inputRef.current?.focus(), 100);
-  }, [open]);
+  }, [open, hidden]);
 
   useEffect(() => {
-    if (open && endRef.current) endRef.current.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, open]);
+    if (!hidden && open && endRef.current) endRef.current.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, open, hidden]);
 
   async function sendMessage(text) {
     const msg = (text || input).trim();
@@ -63,6 +65,10 @@ export default function MiltonWidget() {
     await miltonClearSession();
     setMessages([]);
   }
+
+  // ── Render gate — placed AFTER every hook so the hook count is stable
+  // across all routes. This is the only correct place to short-circuit.
+  if (hidden) return null;
 
   // ── Closed: floating launcher button ─────────────────────────────────────
   if (!open) {
