@@ -28,6 +28,20 @@ export default function BlandConnection() {
     }
   }
 
+  async function fireTestEscalation() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const resp = await fetch('/api/webhooks/bland/escalate/test', { method: 'POST' });
+      const data = await resp.json();
+      setTestResult({ ...data, kind: 'escalation' });
+    } catch (err) {
+      setTestResult({ error: err.message });
+    } finally {
+      setTesting(false);
+    }
+  }
+
   function copy(value, key) {
     navigator.clipboard?.writeText(value);
     setCopied(key);
@@ -132,9 +146,15 @@ export default function BlandConnection() {
           Replays a realistic call-ended payload through the same code path Bland uses. The new call appears in <code>/dashboard/calls</code>
           immediately, with structured transcript, summary, and topics.
         </div>
-        <button className="btn btn-gold" onClick={fireTestWebhook} disabled={testing}>
-          {testing ? 'Sending test webhook…' : '⚡ Send test call-ended payload'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn-gold" onClick={fireTestWebhook} disabled={testing}>
+            {testing ? 'Sending…' : '⚡ Test call-ended capture'}
+          </button>
+          <button className="btn btn-ghost" onClick={fireTestEscalation} disabled={testing}
+                  style={{ borderColor: 'var(--error)', color: 'var(--error)' }}>
+            {testing ? 'Sending…' : '🚨 Test mid-call escalation'}
+          </button>
+        </div>
         {testResult && (
           <div style={{
             marginTop: 10, padding: 12, background: testResult.error ? 'rgba(184,58,38,0.08)' : 'rgba(74,124,44,0.08)',

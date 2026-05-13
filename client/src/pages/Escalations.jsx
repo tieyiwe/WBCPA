@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { getEscalations, claimEscalation, releaseEscalation, resolveEscalation, requestCallback } from '../lib/api.js';
 import { useRole } from '../lib/roleContext.jsx';
@@ -28,23 +28,58 @@ export default function Escalations() {
   const [error, setError] = useState(null);
   const [pendingId, setPendingId] = useState(null);
   const [recentlyAcceptedId, setRecentlyAcceptedId] = useState(null);
+  const [newIds, setNewIds] = useState(() => new Set());
 
-  if (!can('emails.view') && !can('calls.view')) return <AccessDenied permission="emails.view" />;
+  const canView = can('emails.view') || can('calls.view');
+  const prevIdsRef = useRef(new Set());
 
-  async function refresh() {
-    setLoading(true);
+  async function refresh({ silent = false } = {}) {
+    if (!silent) setLoading(true);
     const data = await getEscalations(scope);
-    if (data?.items) setItems(data.items);
+    if (data?.error) { setError(data.error); if (!silent) setLoading(false); return; }
+    if (data?.items) {
+      // Mark genuinely new items (only on silent/polled refreshes — not the
+      // initial load, otherwise everything is "new")
+      if (silent && prevIdsRef.current.size) {
+        const fresh = new Set();
+        for (const it of data.items) {
+          if (!prevIdsRef.current.has(it.id)) fresh.add(it.id);
+        }
+        if (fresh.size) {
+          setNewIds((prev) => {
+            const merged = new Set(prev);
+            fresh.forEach((id) => merged.add(id));
+            return merged;
+          });
+          // Clear the "new" highlight after 12s
+          setTimeout(() => {
+            setNewIds((prev) => {
+              const next = new Set(prev);
+              fresh.forEach((id) => next.delete(id));
+              return next;
+            });
+          }, 12000);
+        }
+      }
+      prevIdsRef.current = new Set(data.items.map((i) => i.id));
+      setItems(data.items);
+    }
     if (data?.summary) setSummary(data.summary);
-    if (data?.error) setError(data.error);
-    setLoading(false);
+    if (!silent) setLoading(false);
   }
 
   useEffect(() => {
+    if (!canView) return;
     setParams({ scope }, { replace: true });
     refresh();
+    // Live polling — workers see new escalations within 10s
+    const interval = setInterval(() => refresh({ silent: true }), 10000);
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scope]);
+  }, [scope, canView]);
+
+  // Render gate AFTER all hooks (preserves stable hook count)
+  if (!canView) return <AccessDenied permission="emails.view" />;
 
   async function handleAccept(item) {
     if (!can('emails.respond')) return;
@@ -150,6 +185,7 @@ export default function Escalations() {
           role={role}
           pending={pendingId === item.id}
           recentlyAccepted={recentlyAcceptedId === item.id}
+          isNew={newIds.has(item.id)}
           onAccept={handleAccept}
           onRelease={handleRelease}
           onResolve={handleResolve}
@@ -174,7 +210,7 @@ function SummaryPill({ label, value, color }) {
   );
 }
 
-function EscalationCard({ item, can, role, pending, recentlyAccepted, onAccept, onRelease, onResolve, onCallBack }) {
+function EscalationCard({ item, can, role, pending, recentlyAccepted, isNew, onAccept, onRelease, onResolve, onCallBack }) {
   const [showResolve, setShowResolve] = useState(false);
   const [notes, setNotes] = useState('');
   const isResolved = item.status === 'resolved';
@@ -184,7 +220,17 @@ function EscalationCard({ item, can, role, pending, recentlyAccepted, onAccept, 
                       item.urgency === 'high' ? 'var(--error)' : 'var(--warning)';
 
   return (
-    <div className="card" style={{ marginBottom: 12, borderColor: `${accentColor}55` }}>
+    <div className={`card ${isNew ? 'escalation-new' : ''}`}
+         style={{ marginBottom: 12, borderColor: `${accentColor}55`, position: 'relative' }}>
+      {isNew && (
+        <span style={{
+          position: 'absolute', top: 10, right: 14, zIndex: 2,
+          background: 'var(--error)', color: '#fff',
+          padding: '2px 8px', borderRadius: 10,
+          fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.06em',
+          textTransform: 'uppercase', boxShadow: '0 0 0 4px rgba(184,58,38,0.18)'
+        }}>● New</span>
+      )}
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{
           width: 4, alignSelf: 'stretch',

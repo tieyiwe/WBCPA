@@ -14,6 +14,8 @@
 
 const express = require('express');
 const { processCallWebhook } = require('../services/superAgentService');
+const escSvc = require('../services/escalationService');
+const { guardInternal } = require('../middleware/internalKey');
 
 const router = express.Router();
 
@@ -83,6 +85,84 @@ router.post('/bland/call-ended/test', async (req, res) => {
     });
   } catch (err) {
     console.error('[Webhook] test error:', err.stack || err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Real-time mid-call escalation ─────────────────────────────────────────
+// The Bland agent invokes EscalateToHuman as a tool DURING the call when it
+// hits something it can't handle (audit, upset caller, complex tax situation,
+// explicit request for a human). The escalation lands in the queue
+// immediately so workers see it before the call even ends.
+router.post('/bland/escalate', guardInternal, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const subject = b.subject || `Live call from ${b.client_name || 'caller'} — needs CPA`;
+    const reason = b.reason || b.reason_flagged || 'AI agent escalated this call mid-conversation.';
+    const urgency = (() => {
+      const u = String(b.urgency || '').toLowerCase();
+      if (['high', 'urgent', 'critical', 'p1'].includes(u)) return 'high';
+      if (['low', 'p3'].includes(u)) return 'low';
+      // Auto-detect from reason: audit/penalty/legal → high
+      const r = `${reason} ${subject}`.toLowerCase();
+      if (/audit|penalty|levy|lien|garnish|subpoena|notice|cp2000/.test(r)) return 'high';
+      return 'medium';
+    })();
+
+    const item = escSvc.enqueue({
+      type: 'call',
+      call_log_id: b.call_log_id || null,
+      client_name: b.client_name || 'Unknown Caller',
+      client_phone: b.client_phone || b.from || null,
+      client_email: b.client_email || null,
+      subject,
+      reason_flagged: reason,
+      urgency,
+      ai_handoff_summary: b.summary_so_far || b.ai_handoff_summary || reason
+    });
+
+    console.log(`[Webhook] Live escalation enqueued · id=${item.id} · urgency=${urgency} · client=${item.client_name}`);
+    return res.json({
+      ok: true,
+      escalation_id: item.id,
+      message: 'A CPA has been notified. They will follow up with you shortly.'
+    });
+  } catch (err) {
+    console.error('[Webhook] /bland/escalate error:', err.stack || err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Test endpoint for the escalation flow — replays a realistic payload so the
+// operator can confirm the queue + toast + chime light up without a real call.
+router.post('/bland/escalate/test', async (req, res) => {
+  const sample = {
+    client_name: req.body?.client_name || 'James O\'Connor',
+    client_phone: req.body?.client_phone || '+12025550105',
+    client_email: req.body?.client_email || 'jim.oconnor@example.com',
+    subject: req.body?.subject || 'IRS audit notice — caller needs CPA today',
+    reason: req.body?.reason || 'Caller received a CP2000 notice from the IRS and is anxious. Wants to speak with Ebere directly.',
+    urgency: req.body?.urgency || 'high',
+    summary_so_far: req.body?.summary_so_far || 'Caller called about a CP2000 notice on their 2023 return. The notice proposes $14,200 in additional tax related to an unreported 1099-K from Stripe. They have not responded yet; deadline is in 38 days. Caller is upset and asked to speak with a human CPA immediately.'
+  };
+  try {
+    const item = escSvc.enqueue({
+      type: 'call',
+      client_name: sample.client_name,
+      client_phone: sample.client_phone,
+      client_email: sample.client_email,
+      subject: sample.subject,
+      reason_flagged: sample.reason,
+      urgency: sample.urgency,
+      ai_handoff_summary: sample.summary_so_far
+    });
+    return res.json({
+      ok: true,
+      escalation_id: item.id,
+      message: 'Test escalation enqueued. Watch the sidebar badge pulse and the toast in the corner.',
+      item
+    });
+  } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 });

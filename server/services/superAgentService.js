@@ -82,6 +82,23 @@ function buildToolSet() {
         appointment_details: '{{appointment_details}}'
       },
       response: { sent: 'boolean' }
+    },
+    {
+      name: 'EscalateToHuman',
+      description: "Flag this call for a human worker to follow up. Call this WHILE the call is still in progress whenever the caller (1) mentions an IRS notice, audit, penalty, levy, lien, or wage garnishment, (2) is upset or frustrated, (3) asks an investment / legal / billing question you cannot confidently answer, (4) explicitly asks to speak with Ebere or a human CPA, or (5) describes a complex multi-entity / estate / inheritance situation. After calling this tool, briefly tell the caller a CPA will follow up shortly and offer to take a message or transfer.",
+      url: `${REPLIT_URL}/api/webhooks/bland/escalate`,
+      method: 'POST',
+      headers: internalHeader,
+      body: {
+        client_name: '{{client_name}}',
+        client_phone: '{{from}}',
+        client_email: '{{email}}',
+        subject: '{{escalation_subject}}',
+        reason: '{{escalation_reason}}',
+        urgency: '{{escalation_urgency}}',
+        summary_so_far: '{{call_summary}}'
+      },
+      response: { ok: 'boolean', escalation_id: 'string', message: 'string' }
     }
   ];
 }

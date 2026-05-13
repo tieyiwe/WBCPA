@@ -130,9 +130,9 @@ export default function Sidebar() {
                   <span style={{ width: 18, textAlign: 'center', color: 'var(--gold)' }}>{item.icon}</span>
                   <span>{item.title}</span>
                   {item.badgeKey && badges[item.badgeKey] > 0 && (
-                    <span className="badge"
+                    <span className={`badge ${item.badgeKey === 'openEscalations' ? 'badge-urgent-pulse' : ''}`}
                           style={item.badgeKey === 'openEscalations'
-                            ? { background: 'rgba(248,113,113,0.15)', color: 'var(--error)', borderColor: 'rgba(248,113,113,0.35)' }
+                            ? { background: 'rgba(184,58,38,0.15)', color: 'var(--error)', borderColor: 'rgba(184,58,38,0.45)' }
                             : undefined}>
                       {badges[item.badgeKey]}
                     </span>

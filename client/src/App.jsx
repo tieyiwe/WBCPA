@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar.jsx';
 import Topbar from './components/Topbar.jsx';
 import MiltonWidget from './components/MiltonWidget.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
+import EscalationWatcher from './components/EscalationWatcher.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Calls from './pages/Calls.jsx';
 import AgentConfig from './pages/AgentConfig.jsx';
@@ -35,6 +36,9 @@ function ProtectedLayout() {
       </div>
       <ErrorBoundary>
         <MiltonWidget />
+      </ErrorBoundary>
+      <ErrorBoundary>
+        <EscalationWatcher />
       </ErrorBoundary>
     </div>
   );

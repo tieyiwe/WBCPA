@@ -252,12 +252,36 @@ code, pre {
   background: var(--success) !important;
   color: #fff !important;
   border-color: var(--success) !important;
-  box-shadow: 0 0 0 4px rgba(45, 212, 170, 0.18), 0 0 22px rgba(45, 212, 170, 0.35) !important;
+  box-shadow: 0 0 0 4px rgba(74, 124, 44, 0.22), 0 0 22px rgba(74, 124, 44, 0.4) !important;
   animation: accepted-flash 0.6s ease-out;
 }
 @keyframes accepted-flash {
-  0%   { transform: scale(1.06); box-shadow: 0 0 0 12px rgba(74,124,44,0.35), 0 0 30px rgba(74,124,44,0.6); }
-  100% { transform: scale(1);    box-shadow: 0 0 0 4px rgba(74,124,44,0.18), 0 0 22px rgba(74,124,44,0.35); }
+  0%   { transform: scale(1.08); box-shadow: 0 0 0 14px rgba(74,124,44,0.4), 0 0 32px rgba(74,124,44,0.65); }
+  100% { transform: scale(1);    box-shadow: 0 0 0 4px rgba(74,124,44,0.22), 0 0 22px rgba(74,124,44,0.4); }
+}
+
+/* ─── New-escalation arrival pulse ─────────────────────────────────────── */
+.escalation-new {
+  animation: escalation-arrive 1.4s ease-out, escalation-glow 2.2s ease-in-out 0.3s 3;
+  border-color: var(--error) !important;
+}
+@keyframes escalation-arrive {
+  0%   { transform: translateX(-12px); opacity: 0; }
+  60%  { transform: translateX(3px); opacity: 1; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+@keyframes escalation-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(184,58,38,0.0), var(--shadow-sm); }
+  50%      { box-shadow: 0 0 0 6px rgba(184,58,38,0.12), 0 0 32px rgba(184,58,38,0.25); }
+}
+
+/* ─── Sidebar urgent-badge pulse ───────────────────────────────────────── */
+.badge-urgent-pulse {
+  animation: badge-pulse 1.8s ease-in-out infinite;
+}
+@keyframes badge-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(184,58,38,0.55); }
+  50%      { box-shadow: 0 0 0 6px rgba(184,58,38,0); }
 }
 
 /* ─── Milton AI typing indicator + widget pop-in ─────────────────────────── */
