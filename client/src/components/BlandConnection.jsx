@@ -4,6 +4,8 @@ import { getConnectionStatus } from '../lib/api.js';
 export default function BlandConnection() {
   const [status, setStatus] = useState(null);
   const [copied, setCopied] = useState(null);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -11,6 +13,20 @@ export default function BlandConnection() {
       if (data && !data.error) setStatus(data);
     })();
   }, []);
+
+  async function fireTestWebhook() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const resp = await fetch('/api/webhooks/bland/call-ended/test', { method: 'POST' });
+      const data = await resp.json();
+      setTestResult(data);
+    } catch (err) {
+      setTestResult({ error: err.message });
+    } finally {
+      setTesting(false);
+    }
+  }
 
   function copy(value, key) {
     navigator.clipboard?.writeText(value);
@@ -96,6 +112,47 @@ export default function BlandConnection() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Local-URL warning */}
+      {status.base_url_is_localhost && (
+        <div style={{ marginTop: 14, padding: 12, background: 'rgba(199,126,32,0.10)', border: '1px solid var(--warning)', borderRadius: 8, fontSize: '0.86rem' }}>
+          <strong style={{ color: 'var(--warning)' }}>⚠ Base URL is localhost.</strong> Bland's servers can't reach <code>localhost</code> —
+          real call-ended webhooks won't land. Set the <code>REPLIT_URL</code> env var in Replit Secrets to your public Repl URL
+          (e.g. <code>https://&lt;repl-id&gt;.&lt;region&gt;.replit.dev</code>), restart the server, and re-paste the webhook URL into Bland.
+        </div>
+      )}
+
+      {/* Verify capture */}
+      <div style={{ marginTop: 18 }}>
+        <div style={{ textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.72rem', color: 'var(--gold-soft)', marginBottom: 8 }}>
+          Verify transcript capture
+        </div>
+        <div className="card-sub" style={{ marginBottom: 10 }}>
+          Replays a realistic call-ended payload through the same code path Bland uses. The new call appears in <code>/dashboard/calls</code>
+          immediately, with structured transcript, summary, and topics.
+        </div>
+        <button className="btn btn-gold" onClick={fireTestWebhook} disabled={testing}>
+          {testing ? 'Sending test webhook…' : '⚡ Send test call-ended payload'}
+        </button>
+        {testResult && (
+          <div style={{
+            marginTop: 10, padding: 12, background: testResult.error ? 'rgba(184,58,38,0.08)' : 'rgba(74,124,44,0.08)',
+            border: `1px solid ${testResult.error ? 'var(--error)' : 'var(--success)'}`,
+            borderRadius: 8, fontSize: '0.84rem'
+          }}>
+            {testResult.error ? (
+              <div style={{ color: 'var(--error)' }}>Error: {testResult.error}</div>
+            ) : (
+              <div>
+                <strong style={{ color: 'var(--success)' }}>✓ Captured.</strong> Saved as <code>{testResult.processed?.bland_call_id}</code>.
+                Transcript: <strong>{testResult.processed?.transcript_segments}</strong> segments.
+                {testResult.processed?.escalation_enqueued && <> · Escalation auto-enqueued.</>}
+                <div style={{ marginTop: 6, color: 'var(--text-muted)' }}>{testResult.message}</div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Setup checklist */}

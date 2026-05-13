@@ -249,6 +249,7 @@ async function placeCallback({ phone, clientName, topic, previousSummary, reques
 }
 
 function getConnectionStatus() {
+  const baseUrl = REPLIT_URL || 'http://localhost:3000';
   return {
     bland: {
       configured: Boolean(BLAND_API_KEY),
@@ -260,16 +261,19 @@ function getConnectionStatus() {
       phone_number: TWILIO_PHONE_NUMBER || null
     },
     webhooks: {
-      call_ended: `${REPLIT_URL}/api/webhooks/bland/call-ended`,
-      verify_subscriber: `${REPLIT_URL}/api/subscribers/verify`,
-      check_availability: `${REPLIT_URL}/api/calendar/availability`,
-      book_appointment: `${REPLIT_URL}/api/calendar/book`,
-      send_sms: `${REPLIT_URL}/api/voice/sms`
+      call_ended: `${baseUrl}/api/webhooks/bland/call-ended`,
+      call_ended_test: `${baseUrl}/api/webhooks/bland/call-ended/test`,
+      verify_subscriber: `${baseUrl}/api/subscribers/verify`,
+      check_availability: `${baseUrl}/api/calendar/availability`,
+      book_appointment: `${baseUrl}/api/calendar/book`,
+      send_sms: `${baseUrl}/api/voice/sms`,
+      signature_required: Boolean(process.env.BLAND_WEBHOOK_SECRET)
     },
     staff: {
       transfer_phone: WBCPA_STAFF_PHONE
     },
-    base_url: REPLIT_URL,
+    base_url: baseUrl,
+    base_url_is_localhost: !REPLIT_URL || REPLIT_URL.includes('localhost'),
     requires_internal_key: Boolean(INTERNAL_API_KEY && INTERNAL_API_KEY !== 'dev-internal-key'),
     internal_key_header: 'x-api-key'
   };
@@ -309,35 +313,139 @@ function detectActionNeeded(summary) {
   return flags.some((f) => s.includes(f));
 }
 
+// ─── Transcript normalization ─────────────────────────────────────────────
+// Bland sends transcripts in a few shapes depending on the integration config:
+//
+//   1. `transcripts`: array of { user, text, created_at } — most common
+//   2. `transcripts`: array of { role, content, timestamp }
+//   3. `transcript`: single string with "Agent: ...\nUser: ..." lines
+//   4. `concatenated_transcript`: single string
+//
+// The UI expects [{ role: 'agent'|'caller', at: 'M:SS', text }]. Normalize
+// every variant into that shape so the CallItem viewer renders correctly.
+
+function normalizeRole(raw) {
+  const s = String(raw || '').toLowerCase();
+  if (s === 'agent' || s === 'assistant' || s === 'ai' || s === 'bot') return 'agent';
+  if (s === 'user' || s === 'caller' || s === 'human' || s === 'customer') return 'caller';
+  return s || 'agent';
+}
+
+function formatTimestamp(seconds) {
+  if (seconds == null || isNaN(seconds)) return '';
+  const total = Math.max(0, Math.floor(Number(seconds)));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function normalizeTranscript(payload) {
+  // Shape 1/2: structured array
+  const arr = payload.transcripts || payload.transcript_segments || null;
+  if (Array.isArray(arr) && arr.length) {
+    const callStart = arr[0]?.created_at || arr[0]?.timestamp || null;
+    const startMs = callStart ? new Date(callStart).getTime() : null;
+    return arr.map((row) => {
+      const role = normalizeRole(row.user || row.role || row.speaker);
+      const text = (row.text || row.content || row.transcript || '').trim();
+      let at = '';
+      if (row.created_at && startMs) {
+        at = formatTimestamp((new Date(row.created_at).getTime() - startMs) / 1000);
+      } else if (row.timestamp && startMs) {
+        at = formatTimestamp((new Date(row.timestamp).getTime() - startMs) / 1000);
+      } else if (typeof row.offset === 'number') {
+        at = formatTimestamp(row.offset);
+      } else if (typeof row.start === 'number') {
+        at = formatTimestamp(row.start);
+      }
+      return { role, at, text };
+    }).filter((row) => row.text);
+  }
+
+  // Shape 3/4: single concatenated string. Parse "Agent: ...\nUser: ..." lines.
+  const raw = payload.concatenated_transcript || (typeof payload.transcript === 'string' ? payload.transcript : null);
+  if (raw) {
+    const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const segments = [];
+    for (const line of lines) {
+      const m = line.match(/^(agent|assistant|ai|bot|user|caller|human|customer)\s*[:\-]\s*(.+)$/i);
+      if (m) {
+        segments.push({ role: normalizeRole(m[1]), at: '', text: m[2].trim() });
+      } else if (segments.length) {
+        // Continuation of previous speaker's line
+        segments[segments.length - 1].text += ' ' + line;
+      }
+    }
+    if (segments.length) return segments;
+  }
+
+  return null;
+}
+
+function extractTopics(payload) {
+  if (Array.isArray(payload.variables?.topics)) return payload.variables.topics;
+  if (Array.isArray(payload.topics)) return payload.topics;
+  if (typeof payload.variables?.topics === 'string') {
+    return payload.variables.topics.split(/[,;]/).map((t) => t.trim()).filter(Boolean);
+  }
+  // Heuristic: pull obvious tax keywords from the summary
+  const summary = String(payload.summary || '').toLowerCase();
+  const keywords = ['s-corp', 's corp', '1031', 'qbi', 'roth', 'sep-ira', 'cp2000', 'audit', '1099', 'w-2', 'k-1', 'schedule c', 'depreciation', '199a', 'estimated tax', 'home office'];
+  const hits = keywords.filter((k) => summary.includes(k));
+  return hits.length ? hits.map((k) => k.toUpperCase().includes('199A') ? 'QBI deduction §199A' : k.replace(/\b\w/g, (c) => c.toUpperCase())) : null;
+}
+
 async function processCallWebhook(payload = {}) {
-  const {
-    call_id,
-    from,
-    duration,
-    transcript,
-    summary,
-    recording_url,
-    transferred,
-    variables = {}
-  } = payload;
+  // Log a compact summary so the operator can confirm webhooks are landing.
+  console.log('[Webhook] call-ended received:', {
+    call_id: payload.call_id || payload.c_id,
+    from: payload.from || payload.phone_number,
+    to: payload.to,
+    duration: payload.call_length || payload.duration,
+    transferred: payload.transferred,
+    has_transcripts: Array.isArray(payload.transcripts) ? payload.transcripts.length : Boolean(payload.transcript)
+  });
 
-  const callerPhone = from || variables.from;
-  const clientName = variables.client_name || variables.name || 'Unknown Caller';
-  const appointmentDetails = variables.appointment_details || null;
-  const actionNeeded = detectActionNeeded(summary);
+  const call_id = payload.call_id || payload.c_id || `bl_${Date.now()}`;
+  const callerPhone = payload.from || payload.phone_number || payload.variables?.from;
+  const duration = Number(payload.call_length || payload.duration || 0);
+  const summary = payload.summary || payload.call_summary || null;
+  const recording_url = payload.recording_url || payload.recording || null;
+  const transferred = Boolean(payload.transferred || payload.transfer);
+  const variables = payload.variables || {};
+  const clientName = variables.client_name || variables.name || payload.client_name || 'Unknown Caller';
+  const appointmentDetails = variables.appointment_details || payload.appointment_details || null;
+  const direction = payload.direction || (payload.outbound ? 'outbound' : 'inbound');
 
+  const transcript = normalizeTranscript(payload);
+  const topics = extractTopics(payload);
+  const actionNeeded = detectActionNeeded(summary) || transferred;
+
+  // Build an AI handoff summary for the escalation queue when the call was
+  // transferred or flagged. This is what shows up on the Escalations card.
+  let aiHandoffSummary = null;
+  if (transferred || actionNeeded) {
+    aiHandoffSummary = summary
+      ? `${summary}${transferred ? ' [Call was transferred to staff.]' : ''}`
+      : `Call from ${clientName} (${callerPhone || 'unknown phone'}) was ${transferred ? 'transferred to staff' : 'flagged for review'}. ${duration}s duration.`;
+  }
+
+  // Look up matching subscriber by phone
   let subscriberId = null;
   if (isConfigured() && callerPhone) {
     try {
       const { data } = await supabase
         .from('subscribers')
-        .select('id')
+        .select('id, name')
         .eq('phone', callerPhone)
         .maybeSingle();
       subscriberId = data?.id || null;
     } catch (err) {
       console.warn('[SuperAgent] subscriber lookup failed:', err.message);
     }
+  } else if (callerPhone) {
+    const match = MOCK_SUBSCRIBERS.find((s) => s.phone === callerPhone);
+    subscriberId = match?.id || null;
   }
 
   const callRecord = {
@@ -345,41 +453,88 @@ async function processCallWebhook(payload = {}) {
     caller_number: callerPhone,
     subscriber_id: subscriberId,
     client_name: clientName,
-    duration_seconds: Number(duration) || 0,
-    transcript: transcript || null,
-    summary: summary || null,
-    topics_discussed: variables.topics || null,
+    direction,
+    duration_seconds: duration,
+    transcript,
+    summary,
+    topics_discussed: topics,
     action_needed: actionNeeded,
-    booking_made: Boolean(variables.booking_made),
-    transferred: Boolean(transferred),
-    recording_url: recording_url || null,
+    booking_made: Boolean(variables.booking_made || payload.booking_made),
+    transferred,
+    recording_url,
     appointment_details: appointmentDetails,
+    ai_handoff_summary: aiHandoffSummary,
     sms_sent: false,
     called_at: new Date().toISOString()
   };
 
+  let savedCallId = null;
   if (isConfigured()) {
     try {
-      await supabase.from('call_log').upsert(callRecord, { onConflict: 'bland_call_id' });
+      const { data } = await supabase
+        .from('call_log')
+        .upsert(callRecord, { onConflict: 'bland_call_id' })
+        .select('id')
+        .single();
+      savedCallId = data?.id || null;
+      console.log(`[SuperAgent] call_log upsert OK · bland_call_id=${call_id} · row=${savedCallId}`);
     } catch (err) {
-      console.warn('[SuperAgent] call_log upsert failed:', err.message);
+      console.warn('[SuperAgent] call_log upsert failed, falling back to MOCK_CALLS:', err.message);
+      const row = { id: `call_${Date.now()}`, ...callRecord };
+      MOCK_CALLS.unshift(row);
+      savedCallId = row.id;
     }
   } else {
-    MOCK_CALLS.unshift({ id: `call_${Date.now()}`, ...callRecord });
+    const row = { id: `call_${Date.now()}`, ...callRecord };
+    MOCK_CALLS.unshift(row);
+    savedCallId = row.id;
+    console.log(`[SuperAgent] MOCK_CALLS saved · id=${savedCallId} · bland_call_id=${call_id} · transcript_segments=${transcript?.length || 0}`);
   }
 
-  // SMS recap if the call was substantive
-  if (callRecord.duration_seconds > 120 && callRecord.summary && callerPhone) {
-    await sendSMS(callerPhone, callRecord.summary, appointmentDetails);
-    callRecord.sms_sent = true;
+  // Auto-enqueue an escalation for transferred / action-needed calls so
+  // staff sees them in the Escalations tab without a manual step.
+  if (aiHandoffSummary) {
+    try {
+      const escSvc = require('./escalationService');
+      const subject = transferred
+        ? `Transferred call from ${clientName}`
+        : `Action needed: ${(topics && topics[0]) || 'follow-up required'}`;
+      escSvc.enqueue({
+        type: 'call',
+        call_log_id: savedCallId,
+        client_name: clientName,
+        client_phone: callerPhone,
+        client_email: null,
+        subject,
+        reason_flagged: transferred ? 'AI transferred the call to staff' : 'AI flagged this call for human review',
+        urgency: detectActionNeeded(summary) ? 'high' : 'medium',
+        ai_handoff_summary: aiHandoffSummary
+      });
+      console.log(`[SuperAgent] Escalation enqueued for call ${savedCallId}`);
+    } catch (err) {
+      console.warn('[SuperAgent] escalation enqueue failed:', err.message);
+    }
   }
 
-  // Staff notification for action-needed calls (email service handles delivery)
-  if (actionNeeded) {
-    console.log(`[SuperAgent] ACTION NEEDED on call ${call_id} from ${callerPhone} — staff should review.`);
+  // SMS recap for substantive calls
+  if (duration > 120 && summary && callerPhone) {
+    try {
+      await sendSMS(callerPhone, summary, appointmentDetails);
+      callRecord.sms_sent = true;
+    } catch (err) {
+      console.warn('[SuperAgent] SMS recap failed:', err.message);
+    }
   }
 
-  return { ok: true, action_needed: actionNeeded };
+  return {
+    ok: true,
+    call_id: savedCallId,
+    bland_call_id: call_id,
+    action_needed: actionNeeded,
+    transferred,
+    transcript_segments: transcript?.length || 0,
+    escalation_enqueued: Boolean(aiHandoffSummary)
+  };
 }
 
 async function getAgentStats() {
