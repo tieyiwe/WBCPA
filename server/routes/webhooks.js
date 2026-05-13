@@ -59,7 +59,7 @@ router.post('/bland/call-ended/test', async (req, res) => {
     summary: req.body?.summary || 'Test call received via the webhook test endpoint. Caller asked about an S-Corp election and was given a high-level breakdown of payroll-tax savings at $240k SE income. Booking offered.',
     recording_url: 'https://mock.bland.ai/recording/test-call.mp3',
     transcripts: [
-      { user: 'agent', text: 'Thank you for calling The Wealth Building CPA. This is the Super Agent — how can I help?', created_at: new Date(Date.now() - 187000).toISOString() },
+      { user: 'agent', text: 'Thank you for calling The Wealth Building CPA. This is your WBCPA Command Center — how can I help?', created_at: new Date(Date.now() - 187000).toISOString() },
       { user: 'user', text: 'Hi, I had a question about doing an S-Corp election.', created_at: new Date(Date.now() - 180000).toISOString() },
       { user: 'agent', text: 'Happy to walk through that. What is your projected self-employment net income for the year?', created_at: new Date(Date.now() - 174000).toISOString() },
       { user: 'user', text: 'Around 240 thousand.', created_at: new Date(Date.now() - 168000).toISOString() },

@@ -255,7 +255,7 @@ async function bookAppointment(params = {}) {
             `Topic: ${topic}`,
             notes ? `Notes: ${notes}` : '',
             clientPhone ? `Phone: ${clientPhone}` : '',
-            'Booked by WBCPA Super Agent.'
+            'Booked by WBCPA Command Center.'
           ].filter(Boolean).join('\n'),
           start: { dateTime: startIso, timeZone: ET_TZ },
           end: { dateTime: endIso, timeZone: ET_TZ },

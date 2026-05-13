@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// WBCPA Super Agent — Express entrypoint
+// WBCPA Command Center — Express entrypoint
 // Boots cleanly with zero env vars set. All external integrations degrade
 // gracefully to mock data.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -65,7 +65,7 @@ app.use('/api/taxdocs', taxDocsRoutes);
 app.use('/api/milton', miltonRoutes);
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'WBCPA Super Agent' });
+  res.json({ status: 'ok', service: 'WBCPA Command Center' });
 });
 
 // ─── Static client ───────────────────────────────────────────────────────────
@@ -101,7 +101,7 @@ if (fs.existsSync(INDEX_HTML)) {
     res.status(200).send(`
       <!doctype html>
       <html>
-        <head><title>WBCPA Super Agent</title>
+        <head><title>WBCPA Command Center</title>
           <style>
             body { font-family: -apple-system, system-ui, sans-serif; background: #0a0d14; color: #e8e8e8; padding: 48px; }
             code { background: #141928; padding: 4px 8px; border-radius: 4px; color: #c9a84c; }
@@ -109,7 +109,7 @@ if (fs.existsSync(INDEX_HTML)) {
           </style>
         </head>
         <body>
-          <h1 style="color:#c9a84c">WBCPA Super Agent — API is running</h1>
+          <h1 style="color:#c9a84c">WBCPA Command Center — API is running</h1>
           <p>The React dashboard couldn't be built automatically. From the Replit shell, run:</p>
           <p><code>npm install && npm run build</code></p>
           <p>Then reload this page.</p>
@@ -167,7 +167,7 @@ function registerCronJobs() {
 
 app.listen(PORT, HOST, async () => {
   console.log(`\n┌─────────────────────────────────────────────────────┐`);
-  console.log(`│  WBCPA Super Agent — listening on ${HOST}:${PORT}   │`);
+  console.log(`│  WBCPA Command Center — listening on ${HOST}:${PORT}   │`);
   console.log(`│  Built by TIblogics for WB CPA                      │`);
   console.log(`└─────────────────────────────────────────────────────┘\n`);
 

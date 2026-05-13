@@ -126,7 +126,7 @@ const MOCK_SUBSCRIBERS = [
 ];
 
 const TRANSCRIPT_SCORP = [
-  { role: 'agent',  at: '0:00', text: 'WBCPA Super Agent — how can I help today?' },
+  { role: 'agent',  at: '0:00', text: 'WBCPA Command Center — how can I help today?' },
   { role: 'caller', at: '0:04', text: 'Hi, this is Sarah Chen. I wanted to ask about doing an S-Corp election before year end.' },
   { role: 'agent',  at: '0:11', text: 'Got it Sarah — let me verify your account. One second.' },
   { role: 'agent',  at: '0:19', text: 'You\'re an active Premium subscriber. You mentioned year-end S-Corp — what\'s your projected net for 2024?' },
@@ -141,7 +141,7 @@ const TRANSCRIPT_SCORP = [
 ];
 
 const TRANSCRIPT_1031 = [
-  { role: 'agent',  at: '0:00', text: 'WBCPA Super Agent.' },
+  { role: 'agent',  at: '0:00', text: 'WBCPA Command Center.' },
   { role: 'caller', at: '0:02', text: 'Marcus Johnson. I\'m selling a rental — $1.1M sale, $680k basis. I need to defer the gains.' },
   { role: 'agent',  at: '0:11', text: 'Hi Marcus, you\'re looking at about $420k of gain. A 1031 exchange is the classic deferral here. Have you sold yet?' },
   { role: 'caller', at: '0:21', text: 'Closing in 9 days.' },
@@ -153,7 +153,7 @@ const TRANSCRIPT_1031 = [
 ];
 
 const TRANSCRIPT_CP2000 = [
-  { role: 'agent',  at: '0:00', text: 'WBCPA Super Agent.' },
+  { role: 'agent',  at: '0:00', text: 'WBCPA Command Center.' },
   { role: 'caller', at: '0:02', text: 'I just got a CP2000 — they say I owe $14,230. The 1099-Ks are double-counted, I think.' },
   { role: 'agent',  at: '0:13', text: 'That\'s a notice I want our human team to handle directly — IRS correspondence with potential audit exposure isn\'t something I close out alone. Let me transfer you to staff right now.' },
   { role: 'caller', at: '0:24', text: 'Okay, please.' },
@@ -529,7 +529,7 @@ const MOCK_CONFIG = {
   current_season: 'PEAK_SEASON',
   voice_agent_enabled: true,
   auto_send_enabled: true,
-  agent_name: 'WBCPA Super Agent'
+  agent_name: 'WBCPA Command Center'
 };
 
 const MOCK_CLIENTS = [
@@ -896,7 +896,7 @@ const MOCK_SYSTEM_SETTINGS = {
   require_2fa: false,
   allow_invite_sign_up: true,
   branding: {
-    agent_name: 'WBCPA Super Agent',
+    agent_name: 'WBCPA Command Center',
     primary_color: '#c9a84c',
     firm_name: 'WB CPA'
   },

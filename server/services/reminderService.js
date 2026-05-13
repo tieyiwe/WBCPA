@@ -46,7 +46,7 @@ async function sendDeadlineReminders() {
       '',
       season === 'PEAK_SEASON'
         ? 'We\'re in peak season, so please send any outstanding documents as soon as you can.'
-        : 'Reply to this email if you need help preparing, or call the Super Agent at your member number.',
+        : 'Reply to this email if you need help preparing, or call the voice agent at your member number.',
       '',
       '— The WBCPA Team'
     ].join('\n');

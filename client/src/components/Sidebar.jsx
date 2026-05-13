@@ -109,7 +109,7 @@ export default function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
-        <div className="title">WBCPA Super Agent</div>
+        <div className="title">WBCPA Command Center</div>
         <div className="sub">Powered by TIblogics</div>
       </div>
 
@@ -168,7 +168,7 @@ export default function Sidebar() {
         )}
         <div>
           <span className="status-dot" />
-          Super Agent — {season ? (SEASON_LABELS[season] || 'Online') : 'Online'}
+          Command Center — {season ? (SEASON_LABELS[season] || 'Online') : 'Online'}
         </div>
       </div>
     </aside>

@@ -219,7 +219,7 @@ async function placeCallback({ phone, clientName, topic, previousSummary, reques
     `You are calling ${clientName || 'the client'} back at the request of WBCPA staff (${requestedBy?.name || 'staff member'}).`,
     topic ? `The reason for the callback: ${topic}.` : null,
     previousSummary ? `Previous call summary you should reference: ${previousSummary}` : null,
-    'Open warmly: identify yourself as the WBCPA Super Agent calling them back. Confirm it is a good time. Use your existing tools (CheckAvailability, BookAppointment, SendSMSSummary) as needed.'
+    'Open warmly: identify yourself as the WBCPA Command Center calling them back. Confirm it is a good time. Use your existing tools (CheckAvailability, BookAppointment, SendSMSSummary) as needed.'
   ].filter(Boolean).join(' ');
 
   try {
@@ -303,7 +303,7 @@ async function sendSMS(to, summary, appointmentDetails) {
   }
 
   const body = [
-    'WBCPA Super Agent — call recap:',
+    'WBCPA Command Center — call recap:',
     '',
     summary || 'Thanks for calling WBCPA.',
     appointmentDetails ? `\nAppointment: ${appointmentDetails}` : '',
@@ -555,7 +555,7 @@ async function processCallWebhook(payload = {}) {
 }
 
 async function getAgentStats() {
-  const agentName = 'WBCPA Super Agent';
+  const agentName = 'WBCPA Command Center';
   const online = Boolean(BLAND_API_KEY);
 
   if (!isConfigured()) {

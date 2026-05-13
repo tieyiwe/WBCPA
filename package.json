@@ -1,7 +1,7 @@
 {
   "name": "wbcpa-super-agent",
   "version": "1.0.0",
-  "description": "WBCPA Super Agent — 24/7 AI-Powered CPA & Wealth Building Coach",
+  "description": "WBCPA Command Center — 24/7 AI-Powered CPA & Wealth Building Coach",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

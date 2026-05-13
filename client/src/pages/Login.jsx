@@ -27,7 +27,7 @@ export default function Login() {
   return (
     <div className="login-shell">
       <form className="login-card" onSubmit={handleSubmit}>
-        <h1>WBCPA Super Agent</h1>
+        <h1>WBCPA Command Center</h1>
         <div className="tag">Staff dashboard · Built by TIblogics</div>
 
         <div className="form-group">

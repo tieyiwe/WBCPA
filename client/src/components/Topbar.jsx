@@ -5,7 +5,7 @@ import RoleSwitcher from './RoleSwitcher.jsx';
 import { deployAgent } from '../lib/api.js';
 
 const TITLES = {
-  '/dashboard': { title: 'Overview', sub: 'Real-time snapshot of your WBCPA Super Agent' },
+  '/dashboard': { title: 'Overview', sub: 'Real-time snapshot of your WBCPA Command Center' },
   '/dashboard/calls': { title: 'Call Log', sub: 'Every inbound call, summarized' },
   '/dashboard/agent': { title: 'Voice Agent', sub: 'Deploy, tune, and inspect the Bland AI prompt' },
   '/dashboard/subscribers': { title: 'Subscribers', sub: 'Member management' },
