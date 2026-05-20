@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { NavLink, Link } from 'react-router-dom';
+import { NavLink, Link, useLocation } from 'react-router-dom';
 import { getEmailQueue, getEscalationSummary, getMe, getTaxDocSummary } from '../lib/api.js';
 import { SEASON_LABELS } from './SeasonPill.jsx';
 import { useRole } from '../lib/roleContext.jsx';
@@ -74,7 +74,7 @@ const NAV = [
   }
 ];
 
-const COLLAPSE_KEY = 'wbcpa_sidebar_collapsed';
+const PIN_KEY = 'wbcpa_sidebar_pinned';
 
 export default function Sidebar() {
   const { role, can } = useRole();
@@ -83,16 +83,20 @@ export default function Sidebar() {
   const [openEscalations, setOpenEscalations] = useState(0);
   const [pendingDocs, setPendingDocs] = useState(0);
   const [profile, setProfile] = useState(null);
-  const [collapsed, setCollapsed] = useState(() => {
-    try { return new Set(JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '[]')); }
+  const location = useLocation();
+  // Groups are collapsed by default. Hover peeks them open; clicking the header
+  // "pins" a group so it stays open after the mouse leaves. Pins persist.
+  const [pinned, setPinned] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(PIN_KEY) || '[]')); }
     catch { return new Set(); }
   });
+  const [hovered, setHovered] = useState(null);
 
-  function toggleGroup(label) {
-    setCollapsed((prev) => {
+  function togglePin(label) {
+    setPinned((prev) => {
       const next = new Set(prev);
       if (next.has(label)) next.delete(label); else next.add(label);
-      try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(Array.from(next))); } catch { /* ignore */ }
+      try { localStorage.setItem(PIN_KEY, JSON.stringify(Array.from(next))); } catch { /* ignore */ }
       return next;
     });
   }
@@ -140,24 +144,35 @@ export default function Sidebar() {
         {NAV.map((group) => {
           const visibleItems = group.items.filter((i) => !i.permission || can(i.permission));
           if (visibleItems.length === 0) return null;
-          const isCollapsed = collapsed.has(group.label);
-          // Sum any badge counts so a collapsed group still signals attention
+          const isPinned = pinned.has(group.label);
+          // The group that contains the current route stays open so you never
+          // lose your place. Otherwise: open only when pinned or hovered.
+          const hasActive = visibleItems.some((i) => i.end ? location.pathname === i.to : location.pathname.startsWith(i.to));
+          const isOpen = isPinned || hovered === group.label || hasActive;
+          // Sum badge counts so a collapsed group still signals attention
           const groupBadgeTotal = visibleItems.reduce((sum, i) => sum + (i.badgeKey ? (badges[i.badgeKey] || 0) : 0), 0);
           return (
-            <div className="nav-group" key={group.label}>
+            <div
+              className="nav-group"
+              key={group.label}
+              onMouseEnter={() => setHovered(group.label)}
+              onMouseLeave={() => setHovered((h) => (h === group.label ? null : h))}
+            >
               <button
                 type="button"
-                className="nav-group-label nav-group-toggle"
-                onClick={() => toggleGroup(group.label)}
-                aria-expanded={!isCollapsed}
+                className={`nav-group-label nav-group-toggle ${isPinned ? 'pinned' : ''}`}
+                onClick={() => togglePin(group.label)}
+                aria-expanded={isOpen}
+                title={isPinned ? 'Click to unpin (collapses when you move away)' : 'Click to keep this menu open'}
               >
-                <span style={{ display: 'inline-block', width: 12, fontSize: '0.7rem', transition: 'transform 0.15s ease', transform: isCollapsed ? 'rotate(-90deg)' : 'none' }}>▾</span>
+                <span style={{ display: 'inline-block', width: 12, fontSize: '0.7rem', transition: 'transform 0.15s ease', transform: isOpen ? 'none' : 'rotate(-90deg)' }}>▾</span>
                 <span style={{ flex: 1, textAlign: 'left' }}>{group.label}</span>
-                {isCollapsed && groupBadgeTotal > 0 && (
+                {isPinned && <span style={{ fontSize: '0.66rem', opacity: 0.8 }} title="Pinned open">📌</span>}
+                {!isOpen && groupBadgeTotal > 0 && (
                   <span className="badge" style={{ background: 'rgba(184,58,38,0.15)', color: 'var(--error)', borderColor: 'rgba(184,58,38,0.45)' }}>{groupBadgeTotal}</span>
                 )}
               </button>
-              {!isCollapsed && visibleItems.map((item) => (
+              {isOpen && visibleItems.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}

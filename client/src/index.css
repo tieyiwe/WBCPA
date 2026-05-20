@@ -193,6 +193,7 @@ code, pre {
   transition: color 0.15s ease, background 0.15s ease;
 }
 .nav-group-toggle:hover { color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.06); }
+.nav-group-toggle.pinned { color: #e8c97a; }
 
 .nav-item {
   display: flex;
