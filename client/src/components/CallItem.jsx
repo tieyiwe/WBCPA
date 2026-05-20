@@ -9,6 +9,7 @@ export default function CallItem({ call, defaultOpen = false }) {
   const [callbackResult, setCallbackResult] = useState(null);
   const [topic, setTopic] = useState('');
   const [showTopicForm, setShowTopicForm] = useState(false);
+  const [showOriginal, setShowOriginal] = useState(false);
   const { can } = useRole();
 
   const badges = [];
@@ -83,27 +84,45 @@ export default function CallItem({ call, defaultOpen = false }) {
         {/* Transcript */}
         {open && call.transcript && (
           <div style={{ marginTop: 12 }}>
-            <div style={{ textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.72rem', color: 'var(--gold-soft)', marginBottom: 6 }}>
-              Transcript
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+              <div style={{ textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.72rem', color: 'var(--gold-soft)' }}>
+                Transcript
+              </div>
+              {call.transcript_translated && (
+                <>
+                  <span style={{
+                    fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+                    background: 'rgba(63,122,175,0.14)', color: 'var(--info)', border: '1px solid rgba(63,122,175,0.4)'
+                  }}>
+                    🌐 Translated to English{call.transcript_language ? ` from ${langName(call.transcript_language)}` : ''}
+                  </span>
+                  <button className="btn btn-ghost" style={{ padding: '1px 8px', fontSize: '0.74rem' }}
+                          onClick={(e) => { e.stopPropagation(); setShowOriginal((v) => !v); }}>
+                    {showOriginal ? 'Show English' : 'Show original'}
+                  </button>
+                </>
+              )}
             </div>
             {transcriptIsStructured ? (
               <div style={{ background: 'var(--bg-elev-2)', border: '1px solid var(--border)', borderRadius: 8, padding: 12, maxHeight: 360, overflow: 'auto' }}>
                 {call.transcript.map((turn, idx) => (
                   <div key={idx} style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
-                    <div style={{ flex: 'none', width: 64, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', fontSize: '0.74rem', paddingTop: 2 }}>
+                    <div style={{ flex: 'none', width: 56, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', fontSize: '0.74rem', paddingTop: 2 }}>
                       {turn.at}
                     </div>
-                    <div style={{ flex: 'none', width: 60 }}>
+                    <div style={{ flex: 'none', width: 58 }}>
                       <span style={{
                         fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase',
                         padding: '2px 7px', borderRadius: 999,
                         background: turn.role === 'agent' ? 'rgba(201,168,76,0.15)' : 'rgba(96,165,250,0.15)',
                         color: turn.role === 'agent' ? 'var(--gold-soft)' : 'var(--info)'
                       }}>
-                        {turn.role}
+                        {turn.role === 'caller' ? 'client' : turn.role}
                       </span>
                     </div>
-                    <div style={{ flex: 1, fontSize: '0.88rem', lineHeight: 1.5 }}>{turn.text}</div>
+                    <div style={{ flex: 1, fontSize: '0.88rem', lineHeight: 1.5 }}>
+                      {showOriginal && turn.original_text ? turn.original_text : turn.text}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -151,4 +170,13 @@ export default function CallItem({ call, defaultOpen = false }) {
       </div>
     </div>
   );
+}
+
+const LANG_NAMES = {
+  es: 'Spanish', fr: 'French', pt: 'Portuguese', de: 'German', it: 'Italian',
+  zh: 'Chinese', ja: 'Japanese', ko: 'Korean', ar: 'Arabic', ru: 'Russian',
+  hi: 'Hindi', vi: 'Vietnamese', tl: 'Tagalog', pl: 'Polish'
+};
+function langName(code) {
+  return LANG_NAMES[code] || (code ? code.toUpperCase() : 'another language');
 }

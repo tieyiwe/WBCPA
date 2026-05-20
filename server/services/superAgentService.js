@@ -426,7 +426,7 @@ async function processCallWebhook(payload = {}) {
   const call_id = payload.call_id || payload.c_id || `bl_${Date.now()}`;
   const callerPhone = payload.from || payload.phone_number || payload.variables?.from;
   const duration = Number(payload.call_length || payload.duration || 0);
-  const summary = payload.summary || payload.call_summary || null;
+  let summary = payload.summary || payload.call_summary || null;
   const recording_url = payload.recording_url || payload.recording || null;
   const transferred = Boolean(payload.transferred || payload.transfer);
   const variables = payload.variables || {};
@@ -434,7 +434,27 @@ async function processCallWebhook(payload = {}) {
   const appointmentDetails = variables.appointment_details || payload.appointment_details || null;
   const direction = payload.direction || (payload.outbound ? 'outbound' : 'inbound');
 
-  const transcript = normalizeTranscript(payload);
+  let transcript = normalizeTranscript(payload);
+
+  // Translate to English if the caller spoke another language (Spanish, French, etc.)
+  let transcriptLanguage = 'en';
+  let transcriptTranslated = false;
+  if (transcript && transcript.length) {
+    try {
+      const { translateCall } = require('./translationService');
+      const t = await translateCall({ segments: transcript, summary });
+      if (t.was_translated) {
+        transcript = t.segments;       // English text, with original_text preserved per segment
+        summary = t.summary;           // English summary
+        transcriptLanguage = t.source_language;
+        transcriptTranslated = true;
+        console.log(`[SuperAgent] Transcript translated from ${t.source_language_name} → English`);
+      }
+    } catch (err) {
+      console.warn('[SuperAgent] translation step failed:', err.message);
+    }
+  }
+
   const topics = extractTopics(payload);
   const actionNeeded = detectActionNeeded(summary) || transferred;
 
@@ -474,6 +494,8 @@ async function processCallWebhook(payload = {}) {
     duration_seconds: duration,
     transcript,
     summary,
+    transcript_language: transcriptLanguage,
+    transcript_translated: transcriptTranslated,
     topics_discussed: topics,
     action_needed: actionNeeded,
     booking_made: Boolean(variables.booking_made || payload.booking_made),
