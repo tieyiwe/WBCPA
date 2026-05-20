@@ -16,8 +16,7 @@ const NAV = [
   {
     label: 'Voice Agent',
     items: [
-      { to: '/dashboard/calls', icon: '☏', title: 'Call Log', permission: 'calls.view' },
-      { to: '/dashboard/agent', icon: '✦', title: 'Celine — Voice Agent', permission: 'agent.view' }
+      { to: '/dashboard/calls', icon: '☏', title: 'Call Log', permission: 'calls.view' }
     ]
   },
   {
@@ -60,17 +59,22 @@ const NAV = [
       { to: '/dashboard/admin/team',          icon: '◉', title: 'Team',          permission: 'team.view' },
       { to: '/dashboard/admin/roles',         icon: '⚑', title: 'Roles',         permission: 'roles.view' },
       { to: '/dashboard/admin/collaboration', icon: '✎', title: 'Collaboration', permission: 'notes.view' },
-      { to: '/dashboard/admin/activity',      icon: '◔', title: 'Activity Log',  permission: 'activity.view' },
-      { to: '/dashboard/admin/settings',      icon: '⚙', title: 'Settings',      permission: 'system.settings.view' }
+      { to: '/dashboard/admin/activity',      icon: '◔', title: 'Activity Log',  permission: 'activity.view' }
     ]
   },
   {
-    label: 'Setup',
+    // Technical / infrastructure — Super Owner (TIblogics) only.
+    // The whole group hides for everyone else since every item is super_owner-gated.
+    label: 'TIblogics',
     items: [
-      { to: '/dashboard/setup', icon: '⚙', title: 'Setup Guide', permission: 'setup.view' }
+      { to: '/dashboard/agent',          icon: '✦', title: 'Celine — Voice Agent', permission: 'agent.view' },
+      { to: '/dashboard/admin/settings', icon: '⚙', title: 'System Settings',      permission: 'system.settings.view' },
+      { to: '/dashboard/setup',          icon: '⚙', title: 'Setup Guide',          permission: 'setup.view' }
     ]
   }
 ];
+
+const COLLAPSE_KEY = 'wbcpa_sidebar_collapsed';
 
 export default function Sidebar() {
   const { role, can } = useRole();
@@ -79,6 +83,19 @@ export default function Sidebar() {
   const [openEscalations, setOpenEscalations] = useState(0);
   const [pendingDocs, setPendingDocs] = useState(0);
   const [profile, setProfile] = useState(null);
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '[]')); }
+    catch { return new Set(); }
+  });
+
+  function toggleGroup(label) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label); else next.add(label);
+      try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(Array.from(next))); } catch { /* ignore */ }
+      return next;
+    });
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -123,10 +140,24 @@ export default function Sidebar() {
         {NAV.map((group) => {
           const visibleItems = group.items.filter((i) => !i.permission || can(i.permission));
           if (visibleItems.length === 0) return null;
+          const isCollapsed = collapsed.has(group.label);
+          // Sum any badge counts so a collapsed group still signals attention
+          const groupBadgeTotal = visibleItems.reduce((sum, i) => sum + (i.badgeKey ? (badges[i.badgeKey] || 0) : 0), 0);
           return (
             <div className="nav-group" key={group.label}>
-              <div className="nav-group-label">{group.label}</div>
-              {visibleItems.map((item) => (
+              <button
+                type="button"
+                className="nav-group-label nav-group-toggle"
+                onClick={() => toggleGroup(group.label)}
+                aria-expanded={!isCollapsed}
+              >
+                <span style={{ display: 'inline-block', width: 12, fontSize: '0.7rem', transition: 'transform 0.15s ease', transform: isCollapsed ? 'rotate(-90deg)' : 'none' }}>▾</span>
+                <span style={{ flex: 1, textAlign: 'left' }}>{group.label}</span>
+                {isCollapsed && groupBadgeTotal > 0 && (
+                  <span className="badge" style={{ background: 'rgba(184,58,38,0.15)', color: 'var(--error)', borderColor: 'rgba(184,58,38,0.45)' }}>{groupBadgeTotal}</span>
+                )}
+              </button>
+              {!isCollapsed && visibleItems.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
@@ -154,18 +185,18 @@ export default function Sidebar() {
         {profile && (
           <Link to="/dashboard/profile" style={{
             display: 'flex', alignItems: 'center', gap: 10, padding: 8,
-            borderRadius: 8, textDecoration: 'none', color: 'inherit',
-            border: '1px solid var(--border)', background: 'var(--bg-elev-2)'
+            borderRadius: 8, textDecoration: 'none', color: '#fff',
+            border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.08)'
           }}>
             <div className="avatar" style={{
               width: 32, height: 32, fontSize: '0.78rem',
               background: profile.avatar_color || '#555', color: '#fff', flex: 'none'
             }}>{initials(profile.name)}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: '0.84rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div style={{ fontSize: '0.84rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#fff' }}>
                 {profile.name}
               </div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+              <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.6)' }}>
                 {profile.title || profile.email}
               </div>
             </div>
