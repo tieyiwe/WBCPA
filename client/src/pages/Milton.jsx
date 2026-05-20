@@ -318,49 +318,69 @@ function MessageBubble({ msg }) {
     if (!text) return null;
     const lines = text.split('\n');
     const elements = [];
-    let listItems = [];
+    let bullets = [];
+    let ordered = [];
 
-    function flushList() {
-      if (listItems.length) {
+    function flushBullets() {
+      if (bullets.length) {
         elements.push(
-          <ul key={`ul-${elements.length}`} style={{ paddingLeft: 18, margin: '6px 0' }}>
-            {listItems.map((li, i) => <li key={i} style={{ marginBottom: 3 }}>{renderInline(li)}</li>)}
+          <ul key={`ul-${elements.length}`} style={{ paddingLeft: 20, margin: '4px 0' }}>
+            {bullets.map((li, i) => <li key={i} style={{ marginBottom: 4, lineHeight: 1.5 }}>{renderInline(li)}</li>)}
           </ul>
         );
-        listItems = [];
+        bullets = [];
       }
     }
+    function flushOrdered() {
+      if (ordered.length) {
+        elements.push(
+          <ol key={`ol-${elements.length}`} style={{ paddingLeft: 22, margin: '4px 0' }}>
+            {ordered.map((li, i) => <li key={i} style={{ marginBottom: 4, lineHeight: 1.5 }}>{renderInline(li)}</li>)}
+          </ol>
+        );
+        ordered = [];
+      }
+    }
+    function flushAll() { flushBullets(); flushOrdered(); }
 
     lines.forEach((line, i) => {
-      if (line.startsWith('## ') || line.startsWith('### ')) {
-        flushList();
-        const level = line.startsWith('### ') ? 3 : 2;
-        const txt = line.replace(/^#+\s/, '');
+      const trimmed = line.trim();
+      if (trimmed.startsWith('## ') || trimmed.startsWith('### ')) {
+        flushAll();
+        const level = trimmed.startsWith('### ') ? 3 : 2;
         elements.push(
-          <div key={i} style={{ fontWeight: 700, fontSize: level === 2 ? '1rem' : '0.92rem', marginTop: 12, marginBottom: 4, color: 'var(--gold-soft)' }}>
-            {renderInline(txt)}
+          <div key={i} style={{ fontWeight: 700, fontSize: level === 2 ? '0.98rem' : '0.9rem', marginTop: elements.length ? 12 : 0, marginBottom: 4, color: 'var(--gold-soft)' }}>
+            {renderInline(trimmed.replace(/^#+\s/, ''))}
           </div>
         );
-      } else if (line.startsWith('- ') || line.startsWith('* ')) {
-        listItems.push(line.slice(2));
+      } else if (/^[-*]\s/.test(trimmed)) {
+        flushOrdered();
+        bullets.push(trimmed.slice(2));
+      } else if (/^\d+[.)]\s/.test(trimmed)) {
+        flushBullets();
+        ordered.push(trimmed.replace(/^\d+[.)]\s/, ''));
       } else {
-        flushList();
-        if (line.trim() === '') {
-          elements.push(<div key={i} style={{ height: 6 }} />);
+        flushAll();
+        if (trimmed === '') {
+          elements.push(<div key={i} style={{ height: 8 }} />);
         } else {
-          elements.push(<div key={i} style={{ marginBottom: 2 }}>{renderInline(line)}</div>);
+          elements.push(<div key={i} style={{ marginBottom: 4, lineHeight: 1.6 }}>{renderInline(trimmed)}</div>);
         }
       }
     });
-    flushList();
+    flushAll();
     return elements;
   }
 
   function renderInline(text) {
-    const parts = text.split(/(\*\*[^*]+\*\*)/g);
+    // Handle **bold** and `code` inline
+    const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
     return parts.map((part, i) => {
       if (part.startsWith('**') && part.endsWith('**')) {
         return <strong key={i}>{part.slice(2, -2)}</strong>;
+      }
+      if (part.startsWith('`') && part.endsWith('`')) {
+        return <code key={i} style={{ background: 'var(--bg-elev-3)', padding: '1px 5px', borderRadius: 4, fontSize: '0.85em', fontFamily: 'var(--font-mono)' }}>{part.slice(1, -1)}</code>;
       }
       return part;
     });

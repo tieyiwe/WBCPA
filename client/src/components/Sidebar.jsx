@@ -36,6 +36,12 @@ const NAV = [
     ]
   },
   {
+    label: 'Team',
+    items: [
+      { to: '/dashboard/chat', icon: '✉', title: 'Team Chat', permission: 'chat.use' }
+    ]
+  },
+  {
     label: 'Subscribers',
     items: [
       { to: '/dashboard/subscribers', icon: '◈', title: 'Members', permission: 'subscribers.view' },

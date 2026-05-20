@@ -16,6 +16,7 @@ import Profile from './pages/Profile.jsx';
 import Escalations from './pages/Escalations.jsx';
 import TaxDocs from './pages/TaxDocs.jsx';
 import Milton from './pages/Milton.jsx';
+import Chat from './pages/Chat.jsx';
 import ClientUpload from './pages/ClientUpload.jsx';
 import AdminPanel from './pages/admin/AdminPanel.jsx';
 import TeamMembers from './pages/admin/TeamMembers.jsx';
@@ -61,6 +62,7 @@ export default function App() {
         <Route path="escalations" element={<Escalations />} />
         <Route path="taxdocs" element={<TaxDocs />} />
         <Route path="milton" element={<Milton />} />
+        <Route path="chat" element={<Chat />} />
         <Route path="profile" element={<Profile />} />
         <Route path="setup" element={<Setup />} />
         <Route path="admin" element={<AdminPanel />}>

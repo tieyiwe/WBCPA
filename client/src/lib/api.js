@@ -208,3 +208,25 @@ export const miltonClearSession = () =>
   request('/milton/chat', { method: 'DELETE' });
 export const miltonGetSession = () => request('/milton/session');
 export const miltonGetNudges = () => request('/milton/nudges');
+
+// ─── Internal Chat ───────────────────────────────────────────────────────────
+export const chatMembers = () => request('/chat/members');
+export const chatConversations = () => request('/chat/conversations');
+export const chatDiscover = () => request('/chat/discover');
+export const chatMessages = (id) => request(`/chat/conversations/${id}/messages`);
+export const chatSend = (id, body, reply_to) =>
+  request(`/chat/conversations/${id}/messages`, { method: 'POST', body: JSON.stringify({ body, reply_to }) });
+export const chatEdit = (msgId, body) =>
+  request(`/chat/messages/${msgId}`, { method: 'PATCH', body: JSON.stringify({ body }) });
+export const chatDelete = (msgId) =>
+  request(`/chat/messages/${msgId}`, { method: 'DELETE' });
+export const chatCreateChannel = (data) =>
+  request('/chat/channels', { method: 'POST', body: JSON.stringify(data) });
+export const chatCreateGroup = (data) =>
+  request('/chat/groups', { method: 'POST', body: JSON.stringify(data) });
+export const chatOpenDM = (member_id) =>
+  request('/chat/dm', { method: 'POST', body: JSON.stringify({ member_id }) });
+export const chatJoinChannel = (id) =>
+  request(`/chat/conversations/${id}/join`, { method: 'POST' });
+export const chatAddMembers = (id, member_ids) =>
+  request(`/chat/conversations/${id}/members`, { method: 'POST', body: JSON.stringify({ member_ids }) });

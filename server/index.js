@@ -27,6 +27,7 @@ const escalationsRoutes = require('./routes/escalations');
 const taxDocsRoutes = require('./routes/taxDocs');
 const publicUploadRoutes = require('./routes/publicUpload');
 const miltonRoutes = require('./routes/milton');
+const chatRoutes = require('./routes/chat');
 
 const { deployAgent } = require('./services/superAgentService');
 const { sendDeadlineReminders } = require('./services/reminderService');
@@ -65,6 +66,7 @@ app.use('/api/escalations', escalationsRoutes);
 app.use('/api/taxdocs', taxDocsRoutes);
 app.use('/api/public', publicUploadRoutes);
 app.use('/api/milton', miltonRoutes);
+app.use('/api/chat', chatRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'WBCPA Command Center' });

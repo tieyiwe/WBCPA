@@ -23,7 +23,8 @@ const TITLES = {
   '/dashboard/admin/collaboration': { title: 'Collaboration Hub', sub: 'Internal notes, mentions, and discussion' },
   '/dashboard/admin/settings': { title: 'System Settings', sub: 'Integrations, API keys, and preferences' },
   '/dashboard/taxdocs': { title: 'Tax Documents', sub: 'Upload, review, approve, e-sign, and file tax documents' },
-  '/dashboard/milton': { title: 'Milton — AI Tax Advisor', sub: 'Ask anything about WBCPA, clients, tax strategy, IRS guidance, or documents' }
+  '/dashboard/milton': { title: 'Milton — AI Tax Advisor', sub: 'Ask anything about WBCPA, clients, tax strategy, IRS guidance, or documents' },
+  '/dashboard/chat': { title: 'Team Chat', sub: 'Channels, direct messages, and group chats for the whole team' }
 };
 
 function resolveTitle(pathname) {

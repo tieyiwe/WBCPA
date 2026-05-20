@@ -56,7 +56,8 @@ export const PERMISSIONS = {
   'taxdocs.upload':        ['owner', 'admin', 'manager', 'staff'],
   'taxdocs.review':        ['owner', 'admin', 'manager', 'staff'],
   'taxdocs.approve':       ['owner', 'admin', 'manager'],
-  'milton.use':            ['owner', 'admin', 'manager', 'staff', 'viewer']
+  'milton.use':            ['owner', 'admin', 'manager', 'staff', 'viewer'],
+  'chat.use':              ['owner', 'admin', 'manager', 'staff', 'viewer']
 };
 
 export function can(role, key) {

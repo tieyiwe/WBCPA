@@ -108,7 +108,10 @@ const PERMISSIONS = {
   'taxdocs.approve':       ['owner', 'admin', 'manager'],
 
   // Milton AI agent
-  'milton.use':            ['owner', 'admin', 'manager', 'staff', 'viewer']
+  'milton.use':            ['owner', 'admin', 'manager', 'staff', 'viewer'],
+
+  // Internal team chat
+  'chat.use':              ['owner', 'admin', 'manager', 'staff', 'viewer']
 };
 
 function hasPermission(role, key) {
