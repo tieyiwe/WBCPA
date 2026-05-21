@@ -63,12 +63,21 @@ function buildToolSet() {
     },
     {
       name: 'VerifySubscriber',
-      description: 'Verify the caller has an active WBCPA subscription.',
+      description: 'Verify the caller is an existing WBCPA customer and pull their profile + recent call history. Call this at the start of every call with the caller phone number. Returns name, first_name, tier, status, notes, call_count, last_call, recent_calls, and history_summary so you can greet them by name and reference past conversations.',
       url: `${REPLIT_URL}/api/subscribers/verify`,
       method: 'POST',
       headers: internalHeader,
       body: { phone: '{{from}}', email: '{{email}}' },
-      response: { verified: 'boolean', name: 'string', tier: 'string', message: 'string' }
+      response: { verified: 'boolean', name: 'string', first_name: 'string', tier: 'string', notes: 'string', call_count: 'number', history_summary: 'string', message: 'string' }
+    },
+    {
+      name: 'CustomerLookup',
+      description: 'Pull an existing customer\'s fuller profile (notes, tier, status, recent call summaries) mid-call by phone or email. Use when you need more detail than VerifySubscriber returned.',
+      url: `${REPLIT_URL}/api/subscribers/lookup`,
+      method: 'POST',
+      headers: internalHeader,
+      body: { phone: '{{from}}', email: '{{email}}' },
+      response: { found: 'boolean', subscriber: 'object', recent_calls: 'array' }
     },
     {
       name: 'SendSMSSummary',
@@ -82,6 +91,23 @@ function buildToolSet() {
         appointment_details: '{{appointment_details}}'
       },
       response: { sent: 'boolean' }
+    },
+    {
+      name: 'EscalateToHuman',
+      description: "Flag this call for a human worker to follow up. Call this WHILE the call is still in progress whenever the caller (1) mentions an IRS notice, audit, penalty, levy, lien, or wage garnishment, (2) is upset or frustrated, (3) asks an investment / legal / billing question you cannot confidently answer, (4) explicitly asks to speak with Ebere or a human CPA, or (5) describes a complex multi-entity / estate / inheritance situation. After calling this tool, briefly tell the caller a CPA will follow up shortly and offer to take a message or transfer.",
+      url: `${REPLIT_URL}/api/webhooks/bland/escalate`,
+      method: 'POST',
+      headers: internalHeader,
+      body: {
+        client_name: '{{client_name}}',
+        client_phone: '{{from}}',
+        client_email: '{{email}}',
+        subject: '{{escalation_subject}}',
+        reason: '{{escalation_reason}}',
+        urgency: '{{escalation_urgency}}',
+        summary_so_far: '{{call_summary}}'
+      },
+      response: { ok: 'boolean', escalation_id: 'string', message: 'string' }
     }
   ];
 }
@@ -133,22 +159,45 @@ async function deployAgent() {
   }
 }
 
+// Normalize a phone to just digits so +1 202… and 202… and (202) … all match.
+function digits(s) { return String(s || '').replace(/\D/g, ''); }
+function phonesMatch(a, b) {
+  const da = digits(a), db = digits(b);
+  if (!da || !db) return false;
+  return da === db || da.slice(-10) === db.slice(-10); // last-10 handles country code
+}
+
+// Pull recent call context for a subscriber so the agent can reference history.
+function recentCallContext(subscriberId) {
+  const calls = (MOCK_CALLS || [])
+    .filter((c) => c.subscriber_id === subscriberId)
+    .sort((a, b) => new Date(b.called_at || 0) - new Date(a.called_at || 0))
+    .slice(0, 3);
+  return calls.map((c) => ({
+    when: c.called_at,
+    summary: c.summary,
+    topics: c.topics_discussed || []
+  }));
+}
+
 async function verifySubscriber(phone, email) {
   if (!isConfigured()) {
-    // Try a naive mock match by phone; else return the first active VIP.
+    // Match by phone (digits) or email — NO random fallback. Unknown caller = not verified.
     const matched = MOCK_SUBSCRIBERS.find(
-      (s) => s.phone === phone || s.email === email
+      (s) => (phone && phonesMatch(s.phone, phone)) || (email && s.email && s.email.toLowerCase() === String(email).toLowerCase())
     );
-    const sub = matched || MOCK_SUBSCRIBERS[0];
+    if (!matched) return { verified: false, subscriber: null, tier: null };
+    const active = matched.status === 'active' && (!matched.expires_at || new Date(matched.expires_at) > new Date());
     return {
-      verified: sub.status === 'active',
-      subscriber: sub,
-      tier: sub.tier
+      verified: active,
+      subscriber: matched,
+      tier: matched.tier,
+      recent_calls: recentCallContext(matched.id)
     };
   }
 
   try {
-    let query = supabase.from('subscribers').select('*').eq('status', 'active');
+    let query = supabase.from('subscribers').select('*');
     if (phone && email) {
       query = query.or(`phone.eq.${phone},email.eq.${email}`);
     } else if (phone) {
@@ -164,17 +213,122 @@ async function verifySubscriber(phone, email) {
     const sub = data?.[0];
     if (!sub) return { verified: false, subscriber: null, tier: null };
 
-    // Expiration check
-    if (sub.expires_at && new Date(sub.expires_at) < new Date()) {
-      return { verified: false, subscriber: sub, tier: sub.tier };
+    const active = sub.status === 'active' && (!sub.expires_at || new Date(sub.expires_at) > new Date());
+    return { verified: active, subscriber: sub, tier: sub.tier, recent_calls: [] };
+  } catch (err) {
+    console.warn('[SuperAgent] verifySubscriber DB failed:', err.message);
+    // On DB error, don't fabricate a customer — report not-verified so the
+    // agent treats them as a prospect rather than leaking someone else's data.
+    return { verified: false, subscriber: null, tier: null };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Outbound callback — Bland places a call back to a customer using the deployed
+// agent. The agent picks up where the previous call left off using the
+// `previous_summary` and `topic` task variables.
+// ─────────────────────────────────────────────────────────────────────────────
+async function placeCallback({ phone, clientName, topic, previousSummary, requestedBy }) {
+  if (!phone) {
+    return { ok: false, error: 'Phone number is required to call back.' };
+  }
+  if (!BLAND_API_KEY) {
+    console.log(`[SuperAgent MOCK] would call back ${phone} re: "${(topic || '').slice(0, 60)}" requested by ${requestedBy?.name || 'staff'}`);
+    return {
+      ok: true,
+      mock: true,
+      message: `Mock: would dial ${phone} now. Add BLAND_API_KEY to make this live.`,
+      phone,
+      topic
+    };
+  }
+
+  const season = await getCurrentSeason();
+  const taskBriefing = [
+    `You are calling ${clientName || 'the client'} back at the request of WBCPA staff (${requestedBy?.name || 'staff member'}).`,
+    topic ? `The reason for the callback: ${topic}.` : null,
+    previousSummary ? `Previous call summary you should reference: ${previousSummary}` : null,
+    'Open warmly: identify yourself as the WBCPA Command Center calling them back. Confirm it is a good time. Use your existing tools (CheckAvailability, BookAppointment, SendSMSSummary) as needed.'
+  ].filter(Boolean).join(' ');
+
+  try {
+    const payload = {
+      phone_number: phone,
+      task: taskBriefing,
+      voice: 'june',
+      record: true,
+      max_duration: 12,
+      webhook: `${REPLIT_URL}/api/webhooks/bland/call-ended`,
+      metadata: {
+        outbound: true,
+        requested_by_id: requestedBy?.id,
+        requested_by_name: requestedBy?.name,
+        topic,
+        season
+      },
+      ...(BLAND_AGENT_ID ? { agent_id: BLAND_AGENT_ID } : {}),
+      tools: buildToolSet()
+    };
+
+    const response = await axios({
+      url: 'https://api.bland.ai/v1/calls',
+      method: 'POST',
+      headers: {
+        'Authorization': BLAND_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      data: payload,
+      timeout: 15000
+    });
+
+    const callId = response.data?.call_id || response.data?.id;
+    // Show the outbound call live in the log immediately as "ongoing".
+    if (callId) {
+      recordCallStarted({ call_id: callId, to: phone, from: phone, direction: 'outbound', client_name: clientName });
     }
 
-    return { verified: true, subscriber: sub, tier: sub.tier };
+    return {
+      ok: true,
+      call_id: callId,
+      status: response.data?.status || 'queued',
+      phone,
+      topic
+    };
   } catch (err) {
-    console.warn('[SuperAgent] verifySubscriber DB failed, mock fallback:', err.message);
-    const sub = MOCK_SUBSCRIBERS[0];
-    return { verified: true, subscriber: sub, tier: sub.tier };
+    console.warn('[SuperAgent] placeCallback failed:', err.message);
+    return { ok: false, error: err.response?.data?.error || err.message };
   }
+}
+
+function getConnectionStatus() {
+  const baseUrl = REPLIT_URL || 'http://localhost:3000';
+  return {
+    bland: {
+      configured: Boolean(BLAND_API_KEY),
+      agent_id: BLAND_AGENT_ID || null,
+      agent_id_set: Boolean(BLAND_AGENT_ID)
+    },
+    twilio: {
+      configured: Boolean(twilioClient && TWILIO_PHONE_NUMBER),
+      phone_number: TWILIO_PHONE_NUMBER || null
+    },
+    webhooks: {
+      call_ended: `${baseUrl}/api/webhooks/bland/call-ended`,
+      call_ended_test: `${baseUrl}/api/webhooks/bland/call-ended/test`,
+      verify_subscriber: `${baseUrl}/api/subscribers/verify`,
+      check_availability: `${baseUrl}/api/calendar/availability`,
+      book_appointment: `${baseUrl}/api/calendar/book`,
+      send_sms: `${baseUrl}/api/voice/sms`,
+      signature_required: Boolean(process.env.BLAND_WEBHOOK_SECRET)
+    },
+    staff: {
+      transfer_phone: WBCPA_STAFF_PHONE
+    },
+    base_url: baseUrl,
+    base_url_is_localhost: !REPLIT_URL || REPLIT_URL.includes('localhost'),
+    requires_internal_key: Boolean(INTERNAL_API_KEY && INTERNAL_API_KEY !== 'dev-internal-key'),
+    internal_key_header: 'x-api-key'
+  };
 }
 
 async function sendSMS(to, summary, appointmentDetails) {
@@ -184,7 +338,7 @@ async function sendSMS(to, summary, appointmentDetails) {
   }
 
   const body = [
-    'WBCPA Super Agent — call recap:',
+    'WBCPA Command Center — call recap:',
     '',
     summary || 'Thanks for calling WBCPA.',
     appointmentDetails ? `\nAppointment: ${appointmentDetails}` : '',
@@ -206,40 +360,225 @@ async function sendSMS(to, summary, appointmentDetails) {
 
 function detectActionNeeded(summary) {
   if (!summary) return false;
-  const flags = ['audit', 'irs', 'penalty', 'amended', 'legal', 'subpoena', 'notice'];
+  const flags = [
+    // IRS / controversy
+    'audit', 'irs', 'penalty', 'amended', 'legal', 'subpoena', 'notice', 'cp2000',
+    'levy', 'lien', 'garnish', 'collection',
+    // Wants a human / unresolved
+    'speak to', 'speak with', 'talk to a human', 'talk to someone', 'real person',
+    'human', 'call me back', 'follow up', 'follow-up', 'callback', 'urgent',
+    'complaint', 'upset', 'frustrated', 'angry', 'escalate', 'manager',
+    'ebere', 'cpa directly', 'not sure', 'unable to', "couldn't help", 'transfer'
+  ];
   const s = summary.toLowerCase();
   return flags.some((f) => s.includes(f));
 }
 
+// ─── Transcript normalization ─────────────────────────────────────────────
+// Bland sends transcripts in a few shapes depending on the integration config:
+//
+//   1. `transcripts`: array of { user, text, created_at } — most common
+//   2. `transcripts`: array of { role, content, timestamp }
+//   3. `transcript`: single string with "Agent: ...\nUser: ..." lines
+//   4. `concatenated_transcript`: single string
+//
+// The UI expects [{ role: 'agent'|'caller', at: 'M:SS', text }]. Normalize
+// every variant into that shape so the CallItem viewer renders correctly.
+
+function normalizeRole(raw) {
+  const s = String(raw || '').toLowerCase();
+  if (s === 'agent' || s === 'assistant' || s === 'ai' || s === 'bot') return 'agent';
+  if (s === 'user' || s === 'caller' || s === 'human' || s === 'customer') return 'caller';
+  return s || 'agent';
+}
+
+function formatTimestamp(seconds) {
+  if (seconds == null || isNaN(seconds)) return '';
+  const total = Math.max(0, Math.floor(Number(seconds)));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function normalizeTranscript(payload) {
+  // Shape 1/2: structured array
+  const arr = payload.transcripts || payload.transcript_segments || null;
+  if (Array.isArray(arr) && arr.length) {
+    const callStart = arr[0]?.created_at || arr[0]?.timestamp || null;
+    const startMs = callStart ? new Date(callStart).getTime() : null;
+    return arr.map((row) => {
+      const role = normalizeRole(row.user || row.role || row.speaker);
+      const text = (row.text || row.content || row.transcript || '').trim();
+      let at = '';
+      if (row.created_at && startMs) {
+        at = formatTimestamp((new Date(row.created_at).getTime() - startMs) / 1000);
+      } else if (row.timestamp && startMs) {
+        at = formatTimestamp((new Date(row.timestamp).getTime() - startMs) / 1000);
+      } else if (typeof row.offset === 'number') {
+        at = formatTimestamp(row.offset);
+      } else if (typeof row.start === 'number') {
+        at = formatTimestamp(row.start);
+      }
+      return { role, at, text };
+    }).filter((row) => row.text);
+  }
+
+  // Shape 3/4: single concatenated string. Parse "Agent: ...\nUser: ..." lines.
+  const raw = payload.concatenated_transcript || (typeof payload.transcript === 'string' ? payload.transcript : null);
+  if (raw) {
+    const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const segments = [];
+    for (const line of lines) {
+      const m = line.match(/^(agent|assistant|ai|bot|user|caller|human|customer)\s*[:\-]\s*(.+)$/i);
+      if (m) {
+        segments.push({ role: normalizeRole(m[1]), at: '', text: m[2].trim() });
+      } else if (segments.length) {
+        // Continuation of previous speaker's line
+        segments[segments.length - 1].text += ' ' + line;
+      }
+    }
+    if (segments.length) return segments;
+  }
+
+  return null;
+}
+
+function extractTopics(payload) {
+  if (Array.isArray(payload.variables?.topics)) return payload.variables.topics;
+  if (Array.isArray(payload.topics)) return payload.topics;
+  if (typeof payload.variables?.topics === 'string') {
+    return payload.variables.topics.split(/[,;]/).map((t) => t.trim()).filter(Boolean);
+  }
+  // Heuristic: pull obvious tax keywords from the summary
+  const summary = String(payload.summary || '').toLowerCase();
+  const keywords = ['s-corp', 's corp', '1031', 'qbi', 'roth', 'sep-ira', 'cp2000', 'audit', '1099', 'w-2', 'k-1', 'schedule c', 'depreciation', '199a', 'estimated tax', 'home office'];
+  const hits = keywords.filter((k) => summary.includes(k));
+  return hits.length ? hits.map((k) => k.toUpperCase().includes('199A') ? 'QBI deduction §199A' : k.replace(/\b\w/g, (c) => c.toUpperCase())) : null;
+}
+
+// Upsert a call into MOCK_CALLS by bland_call_id. Updates an existing record
+// (e.g. an "ongoing" one created at call start) or prepends a new one.
+function upsertMockCall(blandCallId, patch) {
+  const existing = MOCK_CALLS.find((c) => c.bland_call_id === blandCallId);
+  if (existing) {
+    Object.assign(existing, patch);
+    return existing.id;
+  }
+  const row = { id: `call_${Date.now()}`, ...patch };
+  MOCK_CALLS.unshift(row);
+  return row.id;
+}
+
+// Called when a call is INITIATED (inbound answered or outbound dialed).
+// Creates an "ongoing" record immediately so it shows live in the Call Log,
+// then processCallWebhook fills in the details when the call ends.
+function recordCallStarted(payload = {}) {
+  const call_id = payload.call_id || payload.c_id || `bl_${Date.now()}`;
+  const callerPhone = payload.from || payload.phone_number || payload.to || null;
+  const direction = payload.direction || (payload.outbound ? 'outbound' : 'inbound');
+  const clientName = payload.client_name || payload.variables?.client_name || payload.variables?.name
+    || (callerPhone ? (MOCK_SUBSCRIBERS.find((s) => s.phone === callerPhone)?.name) : null)
+    || 'Incoming caller';
+
+  const record = {
+    bland_call_id: call_id,
+    caller_number: callerPhone,
+    subscriber_id: callerPhone ? (MOCK_SUBSCRIBERS.find((s) => s.phone === callerPhone)?.id || null) : null,
+    client_name: clientName,
+    direction,
+    duration_seconds: 0,
+    transcript: null,
+    summary: 'Call in progress…',
+    topics_discussed: null,
+    action_needed: false,
+    booking_made: false,
+    transferred: false,
+    recording_url: null,
+    status: 'ongoing',
+    sms_sent: false,
+    called_at: new Date().toISOString()
+  };
+
+  if (isConfigured()) {
+    supabase.from('call_log').upsert(record, { onConflict: 'bland_call_id' })
+      .then(() => {}).catch((e) => console.warn('[SuperAgent] call-started upsert failed:', e.message));
+  }
+  const id = upsertMockCall(call_id, record);
+  console.log(`[SuperAgent] Call STARTED · ${direction} · ${clientName} · ${callerPhone || 'no number'} · id=${id}`);
+  return { ok: true, id, bland_call_id: call_id, status: 'ongoing' };
+}
+
 async function processCallWebhook(payload = {}) {
-  const {
-    call_id,
-    from,
-    duration,
-    transcript,
-    summary,
-    recording_url,
-    transferred,
-    variables = {}
-  } = payload;
+  // Log a compact summary so the operator can confirm webhooks are landing.
+  console.log('[Webhook] call-ended received:', {
+    call_id: payload.call_id || payload.c_id,
+    from: payload.from || payload.phone_number,
+    to: payload.to,
+    duration: payload.call_length || payload.duration,
+    transferred: payload.transferred,
+    has_transcripts: Array.isArray(payload.transcripts) ? payload.transcripts.length : Boolean(payload.transcript)
+  });
 
-  const callerPhone = from || variables.from;
-  const clientName = variables.client_name || variables.name || 'Unknown Caller';
-  const appointmentDetails = variables.appointment_details || null;
-  const actionNeeded = detectActionNeeded(summary);
+  const call_id = payload.call_id || payload.c_id || `bl_${Date.now()}`;
+  const callerPhone = payload.from || payload.phone_number || payload.variables?.from;
+  const duration = Number(payload.call_length || payload.duration || 0);
+  let summary = payload.summary || payload.call_summary || null;
+  const recording_url = payload.recording_url || payload.recording || null;
+  const transferred = Boolean(payload.transferred || payload.transfer);
+  const variables = payload.variables || {};
+  const clientName = variables.client_name || variables.name || payload.client_name || 'Unknown Caller';
+  const appointmentDetails = variables.appointment_details || payload.appointment_details || null;
+  const direction = payload.direction || (payload.outbound ? 'outbound' : 'inbound');
 
+  let transcript = normalizeTranscript(payload);
+
+  // Translate to English if the caller spoke another language (Spanish, French, etc.)
+  let transcriptLanguage = 'en';
+  let transcriptTranslated = false;
+  if (transcript && transcript.length) {
+    try {
+      const { translateCall } = require('./translationService');
+      const t = await translateCall({ segments: transcript, summary });
+      if (t.was_translated) {
+        transcript = t.segments;       // English text, with original_text preserved per segment
+        summary = t.summary;           // English summary
+        transcriptLanguage = t.source_language;
+        transcriptTranslated = true;
+        console.log(`[SuperAgent] Transcript translated from ${t.source_language_name} → English`);
+      }
+    } catch (err) {
+      console.warn('[SuperAgent] translation step failed:', err.message);
+    }
+  }
+
+  const topics = extractTopics(payload);
+  const actionNeeded = detectActionNeeded(summary) || transferred;
+
+  // Build an AI handoff summary for the escalation queue when the call was
+  // transferred or flagged. This is what shows up on the Escalations card.
+  let aiHandoffSummary = null;
+  if (transferred || actionNeeded) {
+    aiHandoffSummary = summary
+      ? `${summary}${transferred ? ' [Call was transferred to staff.]' : ''}`
+      : `Call from ${clientName} (${callerPhone || 'unknown phone'}) was ${transferred ? 'transferred to staff' : 'flagged for review'}. ${duration}s duration.`;
+  }
+
+  // Look up matching subscriber by phone
   let subscriberId = null;
   if (isConfigured() && callerPhone) {
     try {
       const { data } = await supabase
         .from('subscribers')
-        .select('id')
+        .select('id, name')
         .eq('phone', callerPhone)
         .maybeSingle();
       subscriberId = data?.id || null;
     } catch (err) {
       console.warn('[SuperAgent] subscriber lookup failed:', err.message);
     }
+  } else if (callerPhone) {
+    const match = MOCK_SUBSCRIBERS.find((s) => s.phone === callerPhone);
+    subscriberId = match?.id || null;
   }
 
   const callRecord = {
@@ -247,45 +586,94 @@ async function processCallWebhook(payload = {}) {
     caller_number: callerPhone,
     subscriber_id: subscriberId,
     client_name: clientName,
-    duration_seconds: Number(duration) || 0,
-    transcript: transcript || null,
-    summary: summary || null,
-    topics_discussed: variables.topics || null,
+    direction,
+    duration_seconds: duration,
+    transcript,
+    summary,
+    transcript_language: transcriptLanguage,
+    transcript_translated: transcriptTranslated,
+    topics_discussed: topics,
     action_needed: actionNeeded,
-    booking_made: Boolean(variables.booking_made),
-    transferred: Boolean(transferred),
-    recording_url: recording_url || null,
+    booking_made: Boolean(variables.booking_made || payload.booking_made),
+    transferred,
+    recording_url,
     appointment_details: appointmentDetails,
+    ai_handoff_summary: aiHandoffSummary,
+    status: 'completed',
     sms_sent: false,
-    called_at: new Date().toISOString()
+    ended_at: new Date().toISOString()
   };
 
+  let savedCallId = null;
   if (isConfigured()) {
     try {
-      await supabase.from('call_log').upsert(callRecord, { onConflict: 'bland_call_id' });
+      const { data } = await supabase
+        .from('call_log')
+        .upsert(callRecord, { onConflict: 'bland_call_id' })
+        .select('id')
+        .single();
+      savedCallId = data?.id || null;
+      console.log(`[SuperAgent] call_log upsert OK · bland_call_id=${call_id} · row=${savedCallId}`);
     } catch (err) {
-      console.warn('[SuperAgent] call_log upsert failed:', err.message);
+      console.warn('[SuperAgent] call_log upsert failed, falling back to MOCK_CALLS:', err.message);
+      savedCallId = upsertMockCall(call_id, callRecord);
     }
   } else {
-    MOCK_CALLS.unshift({ id: `call_${Date.now()}`, ...callRecord });
+    // Update the existing "ongoing" record if one was created at call start,
+    // otherwise create a fresh completed record.
+    savedCallId = upsertMockCall(call_id, callRecord);
+    console.log(`[SuperAgent] MOCK_CALLS saved · id=${savedCallId} · bland_call_id=${call_id} · transcript_segments=${transcript?.length || 0}`);
   }
 
-  // SMS recap if the call was substantive
-  if (callRecord.duration_seconds > 120 && callRecord.summary && callerPhone) {
-    await sendSMS(callerPhone, callRecord.summary, appointmentDetails);
-    callRecord.sms_sent = true;
+  // Auto-enqueue an escalation for transferred / action-needed calls so
+  // staff sees them in the Escalations tab without a manual step.
+  console.log(`[SuperAgent] Escalation decision · transferred=${transferred} · action_needed=${actionNeeded} · will_escalate=${Boolean(aiHandoffSummary)} · summary="${(summary || '').slice(0, 60)}"`);
+  if (aiHandoffSummary) {
+    try {
+      const escSvc = require('./escalationService');
+      const subject = transferred
+        ? `Transferred call from ${clientName}`
+        : `Action needed: ${(topics && topics[0]) || 'follow-up required'}`;
+      const item = escSvc.enqueue({
+        type: 'call',
+        call_log_id: savedCallId,
+        client_name: clientName,
+        client_phone: callerPhone,
+        client_email: null,
+        subject,
+        reason_flagged: transferred ? 'AI transferred the call to staff' : 'AI flagged this call for human review',
+        urgency: detectActionNeeded(summary) ? 'high' : 'medium',
+        ai_handoff_summary: aiHandoffSummary
+      });
+      console.log(`[SuperAgent] ✓ Escalation enqueued · id=${item.id} · for call ${savedCallId}`);
+    } catch (err) {
+      console.warn('[SuperAgent] escalation enqueue failed:', err.message);
+    }
   }
 
-  // Staff notification for action-needed calls (email service handles delivery)
-  if (actionNeeded) {
-    console.log(`[SuperAgent] ACTION NEEDED on call ${call_id} from ${callerPhone} — staff should review.`);
+  // SMS recap for substantive calls
+  if (duration > 120 && summary && callerPhone) {
+    try {
+      await sendSMS(callerPhone, summary, appointmentDetails);
+      callRecord.sms_sent = true;
+    } catch (err) {
+      console.warn('[SuperAgent] SMS recap failed:', err.message);
+    }
   }
 
-  return { ok: true, action_needed: actionNeeded };
+  return {
+    ok: true,
+    call_id: savedCallId,
+    bland_call_id: call_id,
+    action_needed: actionNeeded,
+    transferred,
+    transcript_segments: transcript?.length || 0,
+    escalation_enqueued: Boolean(aiHandoffSummary)
+  };
 }
 
 async function getAgentStats() {
-  const agentName = 'WBCPA Super Agent';
+  const agentName = 'WBCPA Command Center';
   const online = Boolean(BLAND_API_KEY);
 
   if (!isConfigured()) {
@@ -356,12 +744,20 @@ async function getAgentStats() {
 }
 
 async function getRecentCalls(filter, limit = 50) {
+  // Newest on top; ongoing calls pinned above completed ones.
+  const sortNewestFirst = (list) => list.slice().sort((a, b) => {
+    const ao = a.status === 'ongoing' ? 1 : 0;
+    const bo = b.status === 'ongoing' ? 1 : 0;
+    if (ao !== bo) return bo - ao;
+    return new Date(b.called_at || 0) - new Date(a.called_at || 0);
+  });
+
   if (!isConfigured()) {
     let list = [...MOCK_CALLS];
     if (filter === 'bookings') list = list.filter((c) => c.booking_made);
     if (filter === 'transferred') list = list.filter((c) => c.transferred);
     if (filter === 'action_needed') list = list.filter((c) => c.action_needed);
-    return list.slice(0, limit);
+    return sortNewestFirst(list).slice(0, limit);
   }
 
   try {
@@ -371,10 +767,10 @@ async function getRecentCalls(filter, limit = 50) {
     if (filter === 'action_needed') q = q.eq('action_needed', true);
     const { data, error } = await q;
     if (error) throw error;
-    return data || [];
+    return sortNewestFirst(data || []);
   } catch (err) {
     console.warn('[SuperAgent] getRecentCalls failed:', err.message);
-    return MOCK_CALLS.slice(0, limit);
+    return sortNewestFirst(MOCK_CALLS).slice(0, limit);
   }
 }
 
@@ -383,7 +779,10 @@ module.exports = {
   verifySubscriber,
   sendSMS,
   processCallWebhook,
+  recordCallStarted,
   getAgentStats,
   getRecentCalls,
-  buildToolSet
+  buildToolSet,
+  placeCallback,
+  getConnectionStatus
 };

@@ -17,6 +17,48 @@ const googleConfigured = Boolean(
   GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET && GOOGLE_REFRESH_TOKEN
 );
 
+// ── Owner-configurable availability ──────────────────────────────────────────
+// The owner sets which days/hours are bookable and the slot length. The agent's
+// CheckAvailability tool and the manual booking UI both read from this so the
+// firm controls exactly when clients can book.
+const availabilityConfig = {
+  working_days: [1, 2, 3, 4, 5],   // 0=Sun … 6=Sat (default Mon–Fri)
+  start_hour: 9,                    // 9 AM ET
+  end_hour: 17,                     // 5 PM ET (exclusive)
+  slot_minutes: 30,
+  lunch_start: 12,                  // skip 12–1 PM; set null to disable
+  lunch_end: 13,
+  days_ahead: 14,                   // how far out clients can book
+  blackout_dates: []               // ['2026-05-26', …] specific days off (YYYY-MM-DD ET)
+};
+
+function getAvailabilityConfig() {
+  return { ...availabilityConfig };
+}
+
+function setAvailabilityConfig(patch = {}) {
+  const allowed = ['working_days', 'start_hour', 'end_hour', 'slot_minutes', 'lunch_start', 'lunch_end', 'days_ahead', 'blackout_dates'];
+  for (const k of allowed) {
+    if (patch[k] !== undefined) availabilityConfig[k] = patch[k];
+  }
+  return getAvailabilityConfig();
+}
+
+// ET date key (YYYY-MM-DD) for blackout comparisons
+function etDateKey(date) {
+  return new Date(date).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+}
+
+// Is this start time already taken by a confirmed appointment? (mock mode)
+function isSlotTaken(startIso) {
+  const t = new Date(startIso).getTime();
+  return (MOCK_APPOINTMENTS || []).some((a) => {
+    if (a.status === 'cancelled') return false;
+    const at = new Date(a.scheduled_at || a.start_time || 0).getTime();
+    return at === t;
+  });
+}
+
 let calendarClient = null;
 function getCalendarClient() {
   if (!googleConfigured) return null;
@@ -80,54 +122,51 @@ function isBusinessTimeET(date) {
   return true;
 }
 
-function generateMockSlots(maxSlots = 6) {
+// Generate bookable slots from the owner's availability config, excluding any
+// already-booked appointments so the agent never double-books.
+function generateMockSlots(maxSlots = 6, { includeTaken = false } = {}) {
+  const cfg = availabilityConfig;
+  const slotMs = (cfg.slot_minutes || 30) * 60 * 1000;
   const slots = [];
-  // Start at tomorrow 9AM ET
-  const start = new Date();
-  start.setDate(start.getDate() + 1);
-  // Normalize to 9AM ET: build from UTC midpoint; safe enough for mock display.
-  start.setHours(14, 0, 0, 0); // 9AM ET is ~14:00 UTC during EST
-  let cursor = new Date(start);
+  const horizon = Date.now() + (cfg.days_ahead || 14) * DAY_MS;
 
-  while (slots.length < maxSlots && slots.length < 100) {
-    const dow = cursor.getUTCDay();
-    const hourET = Number(
-      cursor.toLocaleString('en-US', { timeZone: ET_TZ, hour: 'numeric', hour12: false })
-    );
+  // Start from the next slot boundary after now.
+  let cursor = new Date();
+  cursor.setSeconds(0, 0);
+  const stepMin = cfg.slot_minutes || 30;
+  cursor.setMinutes(cursor.getMinutes() + (stepMin - (cursor.getMinutes() % stepMin)));
 
-    // skip weekends
-    if (dow === 0 || dow === 6) {
-      cursor = new Date(cursor.getTime() + DAY_MS);
-      cursor.setUTCHours(14, 0, 0, 0);
-      continue;
+  let guard = 0;
+  while (slots.length < maxSlots && cursor.getTime() < horizon && guard < 5000) {
+    guard += 1;
+    // Day-of-week in ET
+    const dowStr = cursor.toLocaleString('en-US', { timeZone: ET_TZ, weekday: 'short' });
+    const dowMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const dow = dowMap[dowStr];
+    const hourET = Number(cursor.toLocaleString('en-US', { timeZone: ET_TZ, hour: 'numeric', hour12: false }));
+    const dateKey = etDateKey(cursor);
+
+    const dayOk = (cfg.working_days || []).includes(dow) && !(cfg.blackout_dates || []).includes(dateKey);
+    const hourOk = hourET >= cfg.start_hour && hourET < cfg.end_hour;
+    const isLunch = cfg.lunch_start != null && cfg.lunch_end != null && hourET >= cfg.lunch_start && hourET < cfg.lunch_end;
+
+    if (dayOk && hourOk && !isLunch) {
+      const startIso = cursor.toISOString();
+      const taken = isSlotTaken(startIso);
+      if (includeTaken || !taken) {
+        const slotEnd = new Date(cursor.getTime() + slotMs);
+        const disp = formatDisplay(startIso);
+        slots.push({
+          start: startIso,
+          end: slotEnd.toISOString(),
+          displayDate: disp.displayDate,
+          displayTime: disp.displayTime,
+          displayFull: disp.displayFull,
+          taken
+        });
+      }
     }
-
-    // skip lunch 12–1 ET
-    if (hourET === 12) {
-      cursor = new Date(cursor.getTime() + 30 * 60 * 1000);
-      continue;
-    }
-
-    // Stop after 5PM ET → roll to next weekday 9AM ET
-    if (hourET >= 17 || hourET < 9) {
-      cursor = new Date(cursor.getTime() + DAY_MS);
-      cursor.setUTCHours(14, 0, 0, 0);
-      continue;
-    }
-
-    const slotStart = new Date(cursor);
-    const slotEnd = new Date(cursor.getTime() + 30 * 60 * 1000);
-    const disp = formatDisplay(slotStart.toISOString());
-
-    slots.push({
-      start: slotStart.toISOString(),
-      end: slotEnd.toISOString(),
-      displayDate: disp.displayDate,
-      displayTime: disp.displayTime,
-      displayFull: disp.displayFull
-    });
-
-    cursor = new Date(cursor.getTime() + 30 * 60 * 1000);
+    cursor = new Date(cursor.getTime() + slotMs);
   }
 
   return slots;
@@ -235,6 +274,16 @@ async function bookAppointment(params = {}) {
     return { success: false, message: 'No available slots could be resolved.' };
   }
 
+  // Guard against double-booking — the agent must never book a taken slot.
+  if (!isConfigured() && isSlotTaken(new Date(resolvedStart).toISOString())) {
+    const alt = generateMockSlots(3);
+    return {
+      success: false,
+      message: `That time was just taken. Next available: ${alt.map((s) => s.displayFull).join(', ') || 'none this week'}.`,
+      alternatives: alt
+    };
+  }
+
   const startIso = new Date(resolvedStart).toISOString();
   const endIso = new Date(new Date(resolvedStart).getTime() + 30 * 60 * 1000).toISOString();
   const disp = formatDisplay(startIso);
@@ -255,7 +304,7 @@ async function bookAppointment(params = {}) {
             `Topic: ${topic}`,
             notes ? `Notes: ${notes}` : '',
             clientPhone ? `Phone: ${clientPhone}` : '',
-            'Booked by WBCPA Super Agent.'
+            'Booked by WBCPA Command Center.'
           ].filter(Boolean).join('\n'),
           start: { dateTime: startIso, timeZone: ET_TZ },
           end: { dateTime: endIso, timeZone: ET_TZ },
@@ -420,10 +469,24 @@ async function getTodayStats() {
   }
 }
 
+// Full grid for the calendar UI — shows free AND taken slots (taken flagged).
+async function getCalendarGrid(max = 60) {
+  if (!googleConfigured) {
+    return generateMockSlots(max, { includeTaken: true });
+  }
+  // With Google configured, getAvailableSlots already filters by real events.
+  const free = await getAvailableSlots(availabilityConfig.days_ahead, max);
+  return free.map((s) => ({ ...s, taken: false }));
+}
+
 module.exports = {
   getAvailableSlots,
+  getCalendarGrid,
   bookAppointment,
   cancelAppointment,
   getUpcomingAppointments,
-  getTodayStats
+  getTodayStats,
+  getAvailabilityConfig,
+  setAvailabilityConfig,
+  isSlotTaken
 };

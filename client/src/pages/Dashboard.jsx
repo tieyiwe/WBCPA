@@ -68,7 +68,7 @@ export default function Dashboard() {
 
         <div className="card">
           <div className="card-title">7-Day Call Volume</div>
-          <div className="card-sub">Inbound calls handled by the Super Agent</div>
+          <div className="card-sub">Inbound calls handled by the voice agent</div>
           <div className="bar-chart">
             {callTrend.map((b, i) => {
               const height = (b.count / maxBar) * 100;

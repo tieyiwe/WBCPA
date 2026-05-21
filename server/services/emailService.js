@@ -130,7 +130,7 @@ async function draftReply(clientName, subject, body, classification, season) {
       '',
       'Thanks for reaching out — we\'ve received your note and will have a detailed response shortly.',
       '',
-      'In the meantime, if it helps, our Super Agent is available 24/7 at the number on your membership card for quick questions.',
+      'In the meantime, if it helps, our voice agent is available 24/7 at the number on your membership card for quick questions.',
       '',
       'Warmly,',
       'The WBCPA Team',
@@ -286,7 +286,7 @@ async function processInboxEmails() {
           await sendEmail(
             STAFF_EMAIL,
             `[REVIEW] ${subject}`,
-            `Flagged by Super Agent: ${classification.reason}\n\nFrom: ${from}\n\n${body}`
+            `Flagged by AI agent: ${classification.reason}\n\nFrom: ${from}\n\n${body}`
           );
         } else {
           const draft = await draftReply(clientName, subject, body, classification, season);

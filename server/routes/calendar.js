@@ -8,9 +8,12 @@ const {
   bookAppointment,
   cancelAppointment,
   getUpcomingAppointments,
-  getTodayStats
+  getTodayStats,
+  getAvailabilityConfig,
+  setAvailabilityConfig
 } = require('../services/calendarService');
 const { guardInternal } = require('../middleware/internalKey');
+const { attachActor, requirePermission } = require('../middleware/currentActor');
 
 const router = express.Router();
 
@@ -57,10 +60,36 @@ router.get('/', async (req, res) => {
 
 router.get('/slots', async (req, res) => {
   try {
-    const slots = await getAvailableSlots(5, 6);
+    const max = Number(req.query.max) || 6;
+    const slots = await getAvailableSlots(5, max);
     return res.json({ slots });
   } catch (err) {
     return res.status(500).json({ error: err.message });
+  }
+});
+
+// Full bookable grid for the calendar UI — includes taken slots (flagged).
+router.get('/grid', async (req, res) => {
+  try {
+    const { getCalendarGrid } = require('../services/calendarService');
+    const slots = await getCalendarGrid(Number(req.query.max) || 60);
+    return res.json({ slots, config: getAvailabilityConfig() });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Owner-configurable availability ──────────────────────────────────────────
+router.get('/availability-config', attachActor, (req, res) => {
+  res.json({ config: getAvailabilityConfig() });
+});
+
+router.put('/availability-config', attachActor, requirePermission('appointments.cancel'), (req, res) => {
+  try {
+    const config = setAvailabilityConfig(req.body || {});
+    res.json({ config, ok: true });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 

@@ -1,0 +1,165 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { getEscalationSummary } from '../lib/api.js';
+
+// App-wide watcher: polls escalation summary every 10s. When `open` count
+// goes UP (a new item arrived since the last poll), plays a chime + shows
+// a slide-in toast that links to /dashboard/escalations.
+// Mounted once at the layout level so it works on every page.
+
+export default function EscalationWatcher() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [toast, setToast] = useState(null);
+  const prevOpenRef = useRef(null);
+  const initializedRef = useRef(false);
+  const lastChimeRef = useRef(0);
+  const openSinceRef = useRef(null); // ms timestamp when count first went > 0
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function tick() {
+      const data = await getEscalationSummary().catch(() => null);
+      if (!mounted || !data?.summary) return;
+      const open = data.summary.open ?? 0;
+      const prev = prevOpenRef.current;
+      const now = Date.now();
+
+      // First poll just establishes baseline — no toast on initial mount
+      if (!initializedRef.current) {
+        prevOpenRef.current = open;
+        if (open > 0) openSinceRef.current = now;
+        initializedRef.current = true;
+        return;
+      }
+
+      // Track when the queue first became non-empty after being empty
+      if (prev === 0 && open > 0) openSinceRef.current = now;
+      if (open === 0) openSinceRef.current = null;
+
+      const onEscalationsPage = location.pathname.startsWith('/dashboard/escalations');
+      const stuckMs = openSinceRef.current ? now - openSinceRef.current : 0;
+      const isStuck = open > 0 && stuckMs > 120000; // >2 min unanswered
+
+      // New escalation arrived → chime + toast
+      if (prev != null && open > prev) {
+        const delta = open - prev;
+        playChime(false);
+        lastChimeRef.current = now;
+        if (!onEscalationsPage) {
+          setToast({ count: open, delta, kind: 'new', timestamp: now, stuck: false });
+          setTimeout(() => {
+            setToast((current) => (current && Date.now() - current.timestamp >= 12000 ? null : current));
+          }, 12000);
+        }
+      }
+      // Or — queue is stuck and we haven't chimed in 90s → re-chime, urgent toast
+      else if (isStuck && !onEscalationsPage && now - lastChimeRef.current > 90000) {
+        playChime(true);
+        lastChimeRef.current = now;
+        setToast({
+          count: open,
+          delta: 0,
+          kind: 'stuck',
+          stuckMinutes: Math.floor(stuckMs / 60000),
+          timestamp: now
+        });
+        // Persistent — don't auto-dismiss stuck toasts
+      }
+
+      prevOpenRef.current = open;
+    }
+
+    tick();
+    const interval = setInterval(tick, 10000);
+    return () => { mounted = false; clearInterval(interval); };
+  }, [location.pathname]);
+
+  if (!toast) return null;
+
+  return (
+    <div style={{
+      position: 'fixed', bottom: 20, left: 20, zIndex: 100,
+      background: 'var(--bg-elev-1)', border: '1px solid var(--error)',
+      borderLeft: '4px solid var(--error)',
+      borderRadius: 12, padding: '14px 18px',
+      boxShadow: '0 10px 32px rgba(0,0,0,0.12)',
+      width: 'min(360px, calc(100vw - 40px))',
+      animation: 'milton-pop-in 0.25s ease-out',
+      display: 'flex', flexDirection: 'column', gap: 6
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{
+          width: 10, height: 10, borderRadius: '50%', background: 'var(--error)',
+          boxShadow: '0 0 0 4px rgba(184,58,38,0.25)'
+        }} />
+        <strong style={{ color: 'var(--error)', flex: 1 }}>
+          {toast.kind === 'stuck'
+            ? `⚠ ${toast.count} escalation${toast.count === 1 ? '' : 's'} unanswered for ${toast.stuckMinutes}m+`
+            : toast.delta > 1 ? `${toast.delta} new escalations` : 'New escalation'}
+        </strong>
+        <button onClick={() => setToast(null)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 2, fontSize: '0.95rem' }}>
+          ✕
+        </button>
+      </div>
+      <div style={{ fontSize: '0.84rem', color: 'var(--text-muted)' }}>
+        {toast.kind === 'stuck'
+          ? `Nobody on the team has claimed ${toast.count === 1 ? 'this one' : 'them'} yet. Milton is paging the team — please pick it up.`
+          : `${toast.count} open in the queue. Celine just flagged something for a human to handle.`}
+      </div>
+      <div style={{ marginTop: 4 }}>
+        <button
+          className="btn btn-gold"
+          style={{ padding: '6px 12px', fontSize: '0.82rem' }}
+          onClick={() => {
+            navigate('/dashboard/escalations?scope=open');
+            setToast(null);
+          }}
+        >
+          Open queue →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Browser-native chime via WebAudio. Two short notes that fade out — distinct
+// enough to grab attention without being obnoxious. No audio file dependency.
+function playChime(urgent = false) {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const now = ctx.currentTime;
+    const notes = urgent
+      ? [
+          // Stuck-escalation re-chime: 3 insistent descending notes
+          { freq: 1320, start: 0,    dur: 0.18 }, // E6
+          { freq: 988,  start: 0.18, dur: 0.18 }, // B5
+          { freq: 1320, start: 0.40, dur: 0.32 }  // E6 again
+        ]
+      : [
+          // New-escalation chime: gentle 2-note rise
+          { freq: 880,  start: 0,    dur: 0.18 }, // A5
+          { freq: 1320, start: 0.16, dur: 0.32 }  // E6
+        ];
+    notes.forEach((n) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = n.freq;
+      gain.gain.setValueAtTime(0.001, now + n.start);
+      gain.gain.exponentialRampToValueAtTime(urgent ? 0.28 : 0.18, now + n.start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + n.start + n.dur);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now + n.start);
+      osc.stop(now + n.start + n.dur + 0.05);
+    });
+    // Auto-close to free the audio context after the chime
+    setTimeout(() => { ctx.close(); }, 1000);
+  } catch {
+    /* audio is best-effort; never block on a chime */
+  }
+}

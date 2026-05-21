@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// WBCPA Super Agent — Express entrypoint
+// WBCPA Command Center — Express entrypoint
 // Boots cleanly with zero env vars set. All external integrations degrade
 // gracefully to mock data.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -8,6 +8,7 @@ require('dotenv').config();
 
 const path = require('path');
 const fs = require('fs');
+const { execSync } = require('child_process');
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
@@ -21,6 +22,12 @@ const calendarRoutes = require('./routes/calendar');
 const emailsRoutes = require('./routes/emails');
 const clientsRoutes = require('./routes/clients');
 const webhooksRoutes = require('./routes/webhooks');
+const adminRoutes = require('./routes/admin');
+const escalationsRoutes = require('./routes/escalations');
+const taxDocsRoutes = require('./routes/taxDocs');
+const publicUploadRoutes = require('./routes/publicUpload');
+const miltonRoutes = require('./routes/milton');
+const chatRoutes = require('./routes/chat');
 
 const { deployAgent } = require('./services/superAgentService');
 const { sendDeadlineReminders } = require('./services/reminderService');
@@ -35,6 +42,15 @@ app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 app.use(morgan('tiny'));
 
+if (process.env.NODE_ENV !== 'production') {
+  app.use((req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    next();
+  });
+}
+
 // ─── API routes ──────────────────────────────────────────────────────────────
 
 app.use('/api/auth', authRoutes);
@@ -45,15 +61,38 @@ app.use('/api/calendar', calendarRoutes);
 app.use('/api/emails', emailsRoutes);
 app.use('/api/clients', clientsRoutes);
 app.use('/api/webhooks', webhooksRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/escalations', escalationsRoutes);
+app.use('/api/taxdocs', taxDocsRoutes);
+app.use('/api/public', publicUploadRoutes);
+app.use('/api/milton', miltonRoutes);
+app.use('/api/chat', chatRoutes);
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'WBCPA Super Agent' });
+  res.json({ status: 'ok', service: 'WBCPA Command Center' });
 });
 
 // ─── Static client ───────────────────────────────────────────────────────────
 
 const DIST_DIR = path.resolve(__dirname, '../client/dist');
 const INDEX_HTML = path.join(DIST_DIR, 'index.html');
+const REPO_ROOT = path.resolve(__dirname, '..');
+
+function ensureClientBuilt() {
+  if (fs.existsSync(INDEX_HTML)) return true;
+  console.log('[Boot] client/dist not found — running `vite build` now…');
+  try {
+    const viteBin = path.join(REPO_ROOT, 'node_modules', '.bin', 'vite');
+    const cmd = fs.existsSync(viteBin) ? `"${viteBin}" build` : 'npx --yes vite build';
+    execSync(cmd, { cwd: REPO_ROOT, stdio: 'inherit' });
+    return fs.existsSync(INDEX_HTML);
+  } catch (err) {
+    console.warn('[Boot] Vite build failed:', err.message);
+    return false;
+  }
+}
+
+ensureClientBuilt();
 
 if (fs.existsSync(INDEX_HTML)) {
   app.use(express.static(DIST_DIR));
@@ -61,12 +100,12 @@ if (fs.existsSync(INDEX_HTML)) {
     res.sendFile(INDEX_HTML);
   });
 } else {
-  // Helpful fallback when running for the first time before `npm run build`.
-  app.get('/', (req, res) => {
+  // If the build genuinely cannot run, surface a helpful page instead of crashing.
+  app.get(/^(?!\/api\/).*/, (req, res) => {
     res.status(200).send(`
       <!doctype html>
       <html>
-        <head><title>WBCPA Super Agent</title>
+        <head><title>WBCPA Command Center</title>
           <style>
             body { font-family: -apple-system, system-ui, sans-serif; background: #0a0d14; color: #e8e8e8; padding: 48px; }
             code { background: #141928; padding: 4px 8px; border-radius: 4px; color: #c9a84c; }
@@ -74,9 +113,9 @@ if (fs.existsSync(INDEX_HTML)) {
           </style>
         </head>
         <body>
-          <h1 style="color:#c9a84c">WBCPA Super Agent — API is running</h1>
-          <p>The React dashboard hasn't been built yet. Run:</p>
-          <p><code>npm run build</code></p>
+          <h1 style="color:#c9a84c">WBCPA Command Center — API is running</h1>
+          <p>The React dashboard couldn't be built automatically. From the Replit shell, run:</p>
+          <p><code>npm install && npm run build</code></p>
           <p>Then reload this page.</p>
           <p>API health: <a href="/health">/health</a></p>
         </body>
@@ -132,7 +171,7 @@ function registerCronJobs() {
 
 app.listen(PORT, HOST, async () => {
   console.log(`\n┌─────────────────────────────────────────────────────┐`);
-  console.log(`│  WBCPA Super Agent — listening on ${HOST}:${PORT}   │`);
+  console.log(`│  WBCPA Command Center — listening on ${HOST}:${PORT}   │`);
   console.log(`│  Built by TIblogics for WB CPA                      │`);
   console.log(`└─────────────────────────────────────────────────────┘\n`);
 
