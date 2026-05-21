@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { getEscalations, claimEscalation, releaseEscalation, resolveEscalation, requestCallback } from '../lib/api.js';
+import { getEscalations, claimEscalation, releaseEscalation, resolveEscalation, respondEscalation, requestCallback } from '../lib/api.js';
 import { useRole } from '../lib/roleContext.jsx';
 import { AccessDenied } from '../components/PermissionGate.jsx';
 import { timeAgo, initials, formatPhone } from '../lib/utils.js';
@@ -112,6 +112,15 @@ export default function Escalations() {
     else refresh();
   }
 
+  async function handleRespond(item, payload) {
+    setPendingId(item.id);
+    const resp = await respondEscalation(item.id, payload);
+    setPendingId(null);
+    if (resp?.error) { setError(resp.error); return resp; }
+    await refresh();
+    return resp;
+  }
+
   async function handleCallBack(item) {
     if (!item.client_phone) return alert('No phone number on file for this client.');
     setPendingId(item.id);
@@ -189,6 +198,7 @@ export default function Escalations() {
           onAccept={handleAccept}
           onRelease={handleRelease}
           onResolve={handleResolve}
+          onRespond={handleRespond}
           onCallBack={handleCallBack}
         />
       ))}
@@ -210,9 +220,14 @@ function SummaryPill({ label, value, color }) {
   );
 }
 
-function EscalationCard({ item, can, role, pending, recentlyAccepted, isNew, onAccept, onRelease, onResolve, onCallBack }) {
+function EscalationCard({ item, can, role, pending, recentlyAccepted, isNew, onAccept, onRelease, onResolve, onRespond, onCallBack }) {
   const [showResolve, setShowResolve] = useState(false);
   const [notes, setNotes] = useState('');
+  const [showRespond, setShowRespond] = useState(false);
+  const [respondMsg, setRespondMsg] = useState('');
+  const [respondChannel, setRespondChannel] = useState(item.client_email ? 'email' : 'sms');
+  const [respondResolve, setRespondResolve] = useState(true);
+  const [respondResult, setRespondResult] = useState(null);
   const isResolved = item.status === 'resolved';
   const isClaimed = item.status === 'claimed';
   const accentColor = isResolved ? 'var(--success)' :
@@ -330,6 +345,12 @@ function EscalationCard({ item, can, role, pending, recentlyAccepted, isNew, onA
               </button>
             )}
 
+            {(item.client_email || item.client_phone) && can('emails.respond') && (
+              <button className="btn btn-gold" onClick={() => { setShowRespond(!showRespond); setShowResolve(false); }} disabled={pending}>
+                {showRespond ? 'Cancel reply' : '✉ Respond to client'}
+              </button>
+            )}
+
             {item.client_phone && can('emails.respond') && (
               <button className="btn btn-ghost" onClick={() => onCallBack(item)} disabled={pending}>
                 ☏ Have agent call back
@@ -338,7 +359,7 @@ function EscalationCard({ item, can, role, pending, recentlyAccepted, isNew, onA
 
             {isClaimed && (
               <>
-                <button className="btn btn-ghost" onClick={() => setShowResolve(!showResolve)}>
+                <button className="btn btn-ghost" onClick={() => { setShowResolve(!showResolve); setShowRespond(false); }}>
                   {showResolve ? 'Cancel' : 'Resolve'}
                 </button>
                 <button className="btn btn-ghost" style={{ color: 'var(--text-muted)' }} onClick={() => onRelease(item)} disabled={pending}>
@@ -349,6 +370,52 @@ function EscalationCard({ item, can, role, pending, recentlyAccepted, isNew, onA
           </div>
         )}
       </div>
+
+      {showRespond && (
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Send via</span>
+            {item.client_email && (
+              <button onClick={() => setRespondChannel('email')}
+                style={chanBtn(respondChannel === 'email')}>✉ Email · {item.client_email}</button>
+            )}
+            {item.client_phone && (
+              <button onClick={() => setRespondChannel('sms')}
+                style={chanBtn(respondChannel === 'sms')}>☏ SMS · {formatPhone(item.client_phone)}</button>
+            )}
+          </div>
+          <Field label={`Your reply to ${item.client_name}`}>
+            <textarea className="input" rows={4} value={respondMsg} onChange={(e) => setRespondMsg(e.target.value)}
+              placeholder={respondChannel === 'email'
+                ? `Hi ${item.client_name.split(' ')[0]},\n\nThanks for reaching out about ${item.subject}. …`
+                : `Hi ${item.client_name.split(' ')[0]}, regarding ${item.subject} — …`} />
+          </Field>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: '0.84rem', color: 'var(--text-muted)' }}>
+            <input type="checkbox" checked={respondResolve} onChange={(e) => setRespondResolve(e.target.checked)} />
+            Mark this escalation resolved after sending
+          </label>
+          {respondResult && (
+            <div style={{ marginTop: 8, fontSize: '0.82rem', color: respondResult.error ? 'var(--error)' : 'var(--success)' }}>
+              {respondResult.error
+                ? respondResult.error
+                : respondResult.delivery?.sent
+                  ? `✓ Sent to ${item.client_name} via ${respondResult.response?.channel}.`
+                  : `✓ Logged (mock send — configure ${respondChannel === 'email' ? 'Gmail' : 'Twilio'} to deliver for real).`}
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+            <button className="btn btn-ghost" onClick={() => { setShowRespond(false); setRespondMsg(''); setRespondResult(null); }}>Cancel</button>
+            <button className="btn btn-gold" disabled={pending || !respondMsg.trim()}
+              onClick={async () => {
+                const resp = await onRespond(item, { message: respondMsg, channel: respondChannel, resolve_after: respondResolve });
+                setRespondResult(resp);
+                if (resp && !resp.error) { setRespondMsg(''); if (respondResolve) setShowRespond(false); }
+              }}>
+              {pending ? 'Sending…' : respondResolve ? 'Send & resolve' : 'Send reply'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {showResolve && (
         <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
@@ -364,8 +431,34 @@ function EscalationCard({ item, can, role, pending, recentlyAccepted, isNew, onA
           </div>
         </div>
       )}
+
+      {/* Prior responses log */}
+      {item.responses?.length > 0 && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+          <div style={{ color: 'var(--gold-soft)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+            Responses sent
+          </div>
+          {item.responses.map((r) => (
+            <div key={r.id} style={{ fontSize: '0.84rem', padding: '6px 10px', background: 'var(--bg-elev-2)', borderRadius: 8, marginBottom: 4 }}>
+              <div style={{ color: 'var(--text-dim)', fontSize: '0.74rem', marginBottom: 2 }}>
+                {r.by_name} · {r.channel} · {timeAgo(r.at)}{r.mock ? ' · mock' : r.delivered ? ' · delivered' : ' · failed'}
+              </div>
+              {r.message}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
+}
+
+function chanBtn(active) {
+  return {
+    padding: '4px 10px', borderRadius: 6, cursor: 'pointer', fontSize: '0.78rem',
+    border: `1px solid ${active ? 'var(--olive)' : 'var(--border)'}`,
+    background: active ? 'rgba(92,110,45,0.10)' : 'transparent',
+    color: active ? 'var(--olive)' : 'var(--text-muted)', fontWeight: active ? 600 : 400
+  };
 }
 
 function Field({ label, children }) {

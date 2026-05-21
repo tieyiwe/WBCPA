@@ -143,6 +143,92 @@ function resolve(id, { resolution_notes }, actor) {
   return item;
 }
 
+// Send a response to the client (email or SMS), log it on the escalation,
+// and optionally resolve it. Auto-claims an open item to the responder.
+async function respond(id, { message, channel, subject, resolve_after }, actor) {
+  const item = getEscalation(id);
+  if (!item) {
+    const err = new Error('Escalation not found.'); err.status = 404; throw err;
+  }
+  if (!message || !message.trim()) {
+    const err = new Error('A response message is required.'); err.status = 400; throw err;
+  }
+  // Permission: assigned worker, or admin/owner/super_owner
+  if (item.claimed_by_id && item.claimed_by_id !== actor.id && !['owner', 'admin', 'super_owner'].includes(actor.role)) {
+    const err = new Error('Only the assigned worker (or an admin) can respond to this.'); err.status = 403; throw err;
+  }
+  // Auto-claim if still open so there's a clear owner on the record
+  if (item.status === 'open') {
+    item.status = 'claimed';
+    item.claimed_by_id = actor.id;
+    item.claimed_by_name = actor.name;
+    item.claimed_at = nowIso();
+  }
+
+  // Decide channel: explicit, else prefer email when we have one, else SMS.
+  const pickedChannel = channel || (item.client_email ? 'email' : (item.client_phone ? 'sms' : null));
+  if (!pickedChannel) {
+    const err = new Error('No email or phone on file for this client to respond to.'); err.status = 400; throw err;
+  }
+
+  let delivery = { sent: false, mock: true };
+  try {
+    if (pickedChannel === 'email') {
+      if (!item.client_email) { const e = new Error('No email on file for this client.'); e.status = 400; throw e; }
+      const { sendEmail } = require('./emailService');
+      delivery = await sendEmail(item.client_email, subject || `Re: ${item.subject}`, message.trim());
+    } else {
+      if (!item.client_phone) { const e = new Error('No phone on file for this client.'); e.status = 400; throw e; }
+      const { sendSMS } = require('./superAgentService');
+      delivery = await sendSMS(item.client_phone, message.trim(), null);
+    }
+  } catch (err) {
+    // Surface delivery errors but don't lose the record
+    delivery = { sent: false, error: err.message };
+  }
+
+  // Record the response on the escalation
+  if (!Array.isArray(item.responses)) item.responses = [];
+  const record = {
+    id: `resp_${Date.now().toString(36)}`,
+    channel: pickedChannel,
+    to: pickedChannel === 'email' ? item.client_email : item.client_phone,
+    message: message.trim(),
+    by_id: actor.id,
+    by_name: actor.name,
+    at: nowIso(),
+    delivered: Boolean(delivery.sent),
+    mock: Boolean(delivery.mock),
+    error: delivery.error || null
+  };
+  item.responses.push(record);
+  item.last_response_at = record.at;
+
+  logActivity({
+    actor,
+    action: 'escalation.responded',
+    target_type: 'escalation',
+    target_id: item.id,
+    target_label: item.subject,
+    summary: `Responded to ${item.client_name} via ${pickedChannel}${delivery.sent ? '' : delivery.mock ? ' (mock)' : ' (failed)'}: ${message.trim().slice(0, 80)}`
+  });
+
+  // Optionally resolve in the same action
+  if (resolve_after) {
+    item.status = 'resolved';
+    item.resolved_by_id = actor.id;
+    item.resolved_by_name = actor.name;
+    item.resolved_at = nowIso();
+    item.resolution_notes = item.resolution_notes || `Responded via ${pickedChannel}: ${message.trim().slice(0, 120)}`;
+    logActivity({
+      actor, action: 'escalation.resolved', target_type: 'escalation', target_id: item.id,
+      target_label: item.subject, summary: `Resolved after responding via ${pickedChannel}`
+    });
+  }
+
+  return { item, response: record, delivery };
+}
+
 // Allow other services (the AI agent webhook) to push new escalations into
 // the queue. Unused yet but exposed for the future.
 function enqueue(payload) {
@@ -182,5 +268,6 @@ module.exports = {
   claim,
   release,
   resolve,
+  respond,
   enqueue
 };

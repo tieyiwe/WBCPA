@@ -155,6 +155,8 @@ export const releaseEscalation = (id) =>
   request(`/escalations/${id}/release`, { method: 'POST' });
 export const resolveEscalation = (id, resolution_notes) =>
   request(`/escalations/${id}/resolve`, { method: 'POST', body: JSON.stringify({ resolution_notes }) });
+export const respondEscalation = (id, payload) =>
+  request(`/escalations/${id}/respond`, { method: 'POST', body: JSON.stringify(payload) });
 
 // ─── Tax Documents ────────────────────────────────────────────────────────────
 export const getTaxDocs = (params = {}) => {

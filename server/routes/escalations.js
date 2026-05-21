@@ -63,4 +63,14 @@ router.post('/:id/resolve', requirePermission('emails.respond'), (req, res) => {
   }
 });
 
+// Respond to the client (email or SMS), optionally resolving in the same step.
+router.post('/:id/respond', requirePermission('emails.respond'), async (req, res) => {
+  try {
+    const result = await escSvc.respond(req.params.id, req.body || {}, req.actor);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
