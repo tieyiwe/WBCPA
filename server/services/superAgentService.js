@@ -63,12 +63,21 @@ function buildToolSet() {
     },
     {
       name: 'VerifySubscriber',
-      description: 'Verify the caller has an active WBCPA subscription.',
+      description: 'Verify the caller is an existing WBCPA customer and pull their profile + recent call history. Call this at the start of every call with the caller phone number. Returns name, first_name, tier, status, notes, call_count, last_call, recent_calls, and history_summary so you can greet them by name and reference past conversations.',
       url: `${REPLIT_URL}/api/subscribers/verify`,
       method: 'POST',
       headers: internalHeader,
       body: { phone: '{{from}}', email: '{{email}}' },
-      response: { verified: 'boolean', name: 'string', tier: 'string', message: 'string' }
+      response: { verified: 'boolean', name: 'string', first_name: 'string', tier: 'string', notes: 'string', call_count: 'number', history_summary: 'string', message: 'string' }
+    },
+    {
+      name: 'CustomerLookup',
+      description: 'Pull an existing customer\'s fuller profile (notes, tier, status, recent call summaries) mid-call by phone or email. Use when you need more detail than VerifySubscriber returned.',
+      url: `${REPLIT_URL}/api/subscribers/lookup`,
+      method: 'POST',
+      headers: internalHeader,
+      body: { phone: '{{from}}', email: '{{email}}' },
+      response: { found: 'boolean', subscriber: 'object', recent_calls: 'array' }
     },
     {
       name: 'SendSMSSummary',
@@ -150,22 +159,45 @@ async function deployAgent() {
   }
 }
 
+// Normalize a phone to just digits so +1 202… and 202… and (202) … all match.
+function digits(s) { return String(s || '').replace(/\D/g, ''); }
+function phonesMatch(a, b) {
+  const da = digits(a), db = digits(b);
+  if (!da || !db) return false;
+  return da === db || da.slice(-10) === db.slice(-10); // last-10 handles country code
+}
+
+// Pull recent call context for a subscriber so the agent can reference history.
+function recentCallContext(subscriberId) {
+  const calls = (MOCK_CALLS || [])
+    .filter((c) => c.subscriber_id === subscriberId)
+    .sort((a, b) => new Date(b.called_at || 0) - new Date(a.called_at || 0))
+    .slice(0, 3);
+  return calls.map((c) => ({
+    when: c.called_at,
+    summary: c.summary,
+    topics: c.topics_discussed || []
+  }));
+}
+
 async function verifySubscriber(phone, email) {
   if (!isConfigured()) {
-    // Try a naive mock match by phone; else return the first active VIP.
+    // Match by phone (digits) or email — NO random fallback. Unknown caller = not verified.
     const matched = MOCK_SUBSCRIBERS.find(
-      (s) => s.phone === phone || s.email === email
+      (s) => (phone && phonesMatch(s.phone, phone)) || (email && s.email && s.email.toLowerCase() === String(email).toLowerCase())
     );
-    const sub = matched || MOCK_SUBSCRIBERS[0];
+    if (!matched) return { verified: false, subscriber: null, tier: null };
+    const active = matched.status === 'active' && (!matched.expires_at || new Date(matched.expires_at) > new Date());
     return {
-      verified: sub.status === 'active',
-      subscriber: sub,
-      tier: sub.tier
+      verified: active,
+      subscriber: matched,
+      tier: matched.tier,
+      recent_calls: recentCallContext(matched.id)
     };
   }
 
   try {
-    let query = supabase.from('subscribers').select('*').eq('status', 'active');
+    let query = supabase.from('subscribers').select('*');
     if (phone && email) {
       query = query.or(`phone.eq.${phone},email.eq.${email}`);
     } else if (phone) {
@@ -181,16 +213,13 @@ async function verifySubscriber(phone, email) {
     const sub = data?.[0];
     if (!sub) return { verified: false, subscriber: null, tier: null };
 
-    // Expiration check
-    if (sub.expires_at && new Date(sub.expires_at) < new Date()) {
-      return { verified: false, subscriber: sub, tier: sub.tier };
-    }
-
-    return { verified: true, subscriber: sub, tier: sub.tier };
+    const active = sub.status === 'active' && (!sub.expires_at || new Date(sub.expires_at) > new Date());
+    return { verified: active, subscriber: sub, tier: sub.tier, recent_calls: [] };
   } catch (err) {
-    console.warn('[SuperAgent] verifySubscriber DB failed, mock fallback:', err.message);
-    const sub = MOCK_SUBSCRIBERS[0];
-    return { verified: true, subscriber: sub, tier: sub.tier };
+    console.warn('[SuperAgent] verifySubscriber DB failed:', err.message);
+    // On DB error, don't fabricate a customer — report not-verified so the
+    // agent treats them as a prospect rather than leaking someone else's data.
+    return { verified: false, subscriber: null, tier: null };
   }
 }
 
@@ -252,9 +281,15 @@ async function placeCallback({ phone, clientName, topic, previousSummary, reques
       timeout: 15000
     });
 
+    const callId = response.data?.call_id || response.data?.id;
+    // Show the outbound call live in the log immediately as "ongoing".
+    if (callId) {
+      recordCallStarted({ call_id: callId, to: phone, from: phone, direction: 'outbound', client_name: clientName });
+    }
+
     return {
       ok: true,
-      call_id: response.data?.call_id || response.data?.id,
+      call_id: callId,
       status: response.data?.status || 'queued',
       phone,
       topic
@@ -412,6 +447,58 @@ function extractTopics(payload) {
   return hits.length ? hits.map((k) => k.toUpperCase().includes('199A') ? 'QBI deduction §199A' : k.replace(/\b\w/g, (c) => c.toUpperCase())) : null;
 }
 
+// Upsert a call into MOCK_CALLS by bland_call_id. Updates an existing record
+// (e.g. an "ongoing" one created at call start) or prepends a new one.
+function upsertMockCall(blandCallId, patch) {
+  const existing = MOCK_CALLS.find((c) => c.bland_call_id === blandCallId);
+  if (existing) {
+    Object.assign(existing, patch);
+    return existing.id;
+  }
+  const row = { id: `call_${Date.now()}`, ...patch };
+  MOCK_CALLS.unshift(row);
+  return row.id;
+}
+
+// Called when a call is INITIATED (inbound answered or outbound dialed).
+// Creates an "ongoing" record immediately so it shows live in the Call Log,
+// then processCallWebhook fills in the details when the call ends.
+function recordCallStarted(payload = {}) {
+  const call_id = payload.call_id || payload.c_id || `bl_${Date.now()}`;
+  const callerPhone = payload.from || payload.phone_number || payload.to || null;
+  const direction = payload.direction || (payload.outbound ? 'outbound' : 'inbound');
+  const clientName = payload.client_name || payload.variables?.client_name || payload.variables?.name
+    || (callerPhone ? (MOCK_SUBSCRIBERS.find((s) => s.phone === callerPhone)?.name) : null)
+    || 'Incoming caller';
+
+  const record = {
+    bland_call_id: call_id,
+    caller_number: callerPhone,
+    subscriber_id: callerPhone ? (MOCK_SUBSCRIBERS.find((s) => s.phone === callerPhone)?.id || null) : null,
+    client_name: clientName,
+    direction,
+    duration_seconds: 0,
+    transcript: null,
+    summary: 'Call in progress…',
+    topics_discussed: null,
+    action_needed: false,
+    booking_made: false,
+    transferred: false,
+    recording_url: null,
+    status: 'ongoing',
+    sms_sent: false,
+    called_at: new Date().toISOString()
+  };
+
+  if (isConfigured()) {
+    supabase.from('call_log').upsert(record, { onConflict: 'bland_call_id' })
+      .then(() => {}).catch((e) => console.warn('[SuperAgent] call-started upsert failed:', e.message));
+  }
+  const id = upsertMockCall(call_id, record);
+  console.log(`[SuperAgent] Call STARTED · ${direction} · ${clientName} · ${callerPhone || 'no number'} · id=${id}`);
+  return { ok: true, id, bland_call_id: call_id, status: 'ongoing' };
+}
+
 async function processCallWebhook(payload = {}) {
   // Log a compact summary so the operator can confirm webhooks are landing.
   console.log('[Webhook] call-ended received:', {
@@ -503,8 +590,9 @@ async function processCallWebhook(payload = {}) {
     recording_url,
     appointment_details: appointmentDetails,
     ai_handoff_summary: aiHandoffSummary,
+    status: 'completed',
     sms_sent: false,
-    called_at: new Date().toISOString()
+    ended_at: new Date().toISOString()
   };
 
   let savedCallId = null;
@@ -519,14 +607,12 @@ async function processCallWebhook(payload = {}) {
       console.log(`[SuperAgent] call_log upsert OK · bland_call_id=${call_id} · row=${savedCallId}`);
     } catch (err) {
       console.warn('[SuperAgent] call_log upsert failed, falling back to MOCK_CALLS:', err.message);
-      const row = { id: `call_${Date.now()}`, ...callRecord };
-      MOCK_CALLS.unshift(row);
-      savedCallId = row.id;
+      savedCallId = upsertMockCall(call_id, callRecord);
     }
   } else {
-    const row = { id: `call_${Date.now()}`, ...callRecord };
-    MOCK_CALLS.unshift(row);
-    savedCallId = row.id;
+    // Update the existing "ongoing" record if one was created at call start,
+    // otherwise create a fresh completed record.
+    savedCallId = upsertMockCall(call_id, callRecord);
     console.log(`[SuperAgent] MOCK_CALLS saved · id=${savedCallId} · bland_call_id=${call_id} · transcript_segments=${transcript?.length || 0}`);
   }
 
@@ -675,6 +761,7 @@ module.exports = {
   verifySubscriber,
   sendSMS,
   processCallWebhook,
+  recordCallStarted,
   getAgentStats,
   getRecentCalls,
   buildToolSet,

@@ -12,6 +12,7 @@ export default function CallItem({ call, defaultOpen = false }) {
   const [showOriginal, setShowOriginal] = useState(false);
   const { can } = useRole();
 
+  const isOngoing = call.status === 'ongoing';
   const badges = [];
   if (call.direction === 'outbound') badges.push({ label: 'Outbound', cls: 'badge-gold' });
   if (call.booking_made) badges.push({ label: 'Booked', cls: 'badge-green' });
@@ -47,12 +48,17 @@ export default function CallItem({ call, defaultOpen = false }) {
   }
 
   return (
-    <div className="list-item" onClick={() => setOpen(!open)} style={{ alignItems: 'flex-start' }}>
+    <div className="list-item" onClick={() => setOpen(!open)} style={{ alignItems: 'flex-start', borderLeft: isOngoing ? '3px solid var(--error)' : undefined }}>
       <div className="avatar">{initials(call.client_name)}</div>
       <div className="body">
         <div className="row1">
           <div className="name">{call.client_name || 'Unknown Caller'}</div>
           <div className="phone">{formatPhone(call.caller_number)}</div>
+          {isOngoing && (
+            <span className="badge badge-urgent-pulse" style={{ background: 'rgba(184,58,38,0.15)', color: 'var(--error)', borderColor: 'rgba(184,58,38,0.45)', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--error)', display: 'inline-block' }} /> Ongoing
+            </span>
+          )}
           {badges.map((b) => (
             <span key={b.label} className={`badge ${b.cls}`}>{b.label}</span>
           ))}

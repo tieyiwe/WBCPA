@@ -23,15 +23,26 @@ export default function Calls() {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    (async () => {
+    async function load() {
       const resp = await getCalls(filter);
-      if (active) {
-        setCalls(resp?.calls || []);
-        setLoading(false);
-      }
-    })();
-    return () => { active = false; };
+      if (!active) return;
+      // Sort ongoing calls to the top so live calls are always visible
+      const rows = (resp?.calls || []).slice().sort((a, b) => {
+        const ao = a.status === 'ongoing' ? 1 : 0;
+        const bo = b.status === 'ongoing' ? 1 : 0;
+        if (ao !== bo) return bo - ao;
+        return new Date(b.called_at || 0) - new Date(a.called_at || 0);
+      });
+      setCalls(rows);
+      setLoading(false);
+    }
+    load();
+    // Poll every 5s so ongoing calls appear live and update when they end
+    const interval = setInterval(load, 5000);
+    return () => { active = false; clearInterval(interval); };
   }, [filter]);
+
+  const ongoingCount = calls.filter((c) => c.status === 'ongoing').length;
 
   return (
     <div className="page">
@@ -56,6 +67,11 @@ export default function Calls() {
         <div className="card-title">Call Log</div>
         <div className="card-sub">
           {loading ? 'Loading…' : `${calls.length} call${calls.length === 1 ? '' : 's'} shown · Click any row for transcript & call-back`}
+          {ongoingCount > 0 && (
+            <span style={{ marginLeft: 8, color: 'var(--error)', fontWeight: 700 }}>
+              · 🔴 {ongoingCount} ongoing
+            </span>
+          )}
         </div>
         {!loading && calls.length === 0 && <div className="empty">No calls match this filter.</div>}
         {calls.map((c) => (

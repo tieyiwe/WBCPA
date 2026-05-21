@@ -16,18 +16,53 @@ router.post('/verify', guardInternal, async (req, res) => {
   const { phone, email } = req.body || {};
   const result = await verifySubscriber(phone, email);
   if (result.verified && result.subscriber) {
+    const s = result.subscriber;
+    // Spoken history line the agent can read back naturally.
+    const recent = result.recent_calls || [];
+    const historyLine = recent.length
+      ? `Last contact: ${recent[0].summary || (recent[0].topics || []).join(', ') || 'general inquiry'}.`
+      : 'No prior call on file.';
     return res.json({
       verified: true,
-      name: result.subscriber.name,
-      tier: result.subscriber.tier,
-      message: `Verified ${result.subscriber.tier} subscriber.`
+      name: s.name,
+      first_name: (s.name || '').split(' ')[0],
+      tier: s.tier,
+      status: s.status,
+      member_since: s.subscribed_at || s.created_at || null,
+      notes: s.notes || null,
+      call_count: s.call_count || 0,
+      last_call: s.last_call || null,
+      recent_calls: recent,
+      history_summary: historyLine,
+      message: `Verified ${s.tier} member ${s.name}. ${historyLine}`
     });
   }
   return res.json({
     verified: false,
     name: null,
     tier: null,
-    message: 'No active subscription found for the provided phone or email.'
+    message: 'No active subscription found for the provided phone or email. Treat as a prospective client.'
+  });
+});
+
+// Look up a customer's fuller profile by phone/email (agent or staff use).
+router.post('/lookup', guardInternal, async (req, res) => {
+  const { phone, email } = req.body || {};
+  const result = await verifySubscriber(phone, email);
+  if (!result.subscriber) {
+    return res.json({ found: false, message: 'No matching customer on file.' });
+  }
+  const s = result.subscriber;
+  return res.json({
+    found: true,
+    verified: result.verified,
+    subscriber: {
+      id: s.id, name: s.name, email: s.email, phone: s.phone,
+      tier: s.tier, status: s.status, notes: s.notes,
+      call_count: s.call_count, last_call: s.last_call,
+      subscribed_at: s.subscribed_at, expires_at: s.expires_at
+    },
+    recent_calls: result.recent_calls || []
   });
 });
 

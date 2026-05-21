@@ -13,7 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 const express = require('express');
-const { processCallWebhook } = require('../services/superAgentService');
+const { processCallWebhook, recordCallStarted } = require('../services/superAgentService');
 const escSvc = require('../services/escalationService');
 const { guardInternal } = require('../middleware/internalKey');
 
@@ -29,6 +29,22 @@ function verifyBlandSignature(req) {
   const token = header.startsWith('Bearer ') ? header.slice(7) : header;
   return token === BLAND_WEBHOOK_SECRET;
 }
+
+// Fires when a call is INITIATED — creates an "ongoing" record so the call
+// shows live in the log immediately. Configure this as Bland's "call started"
+// / dynamic-data webhook, or it's hit automatically for outbound dials.
+router.post('/bland/call-started', (req, res) => {
+  if (!verifyBlandSignature(req)) {
+    return res.status(401).json({ error: 'Invalid webhook signature.' });
+  }
+  try {
+    const result = recordCallStarted(req.body || {});
+    return res.json(result);
+  } catch (err) {
+    console.error('[Webhook] call-started error:', err.stack || err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 router.post('/bland/call-ended', async (req, res) => {
   if (!verifyBlandSignature(req)) {
