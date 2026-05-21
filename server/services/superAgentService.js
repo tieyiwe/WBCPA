@@ -360,7 +360,16 @@ async function sendSMS(to, summary, appointmentDetails) {
 
 function detectActionNeeded(summary) {
   if (!summary) return false;
-  const flags = ['audit', 'irs', 'penalty', 'amended', 'legal', 'subpoena', 'notice'];
+  const flags = [
+    // IRS / controversy
+    'audit', 'irs', 'penalty', 'amended', 'legal', 'subpoena', 'notice', 'cp2000',
+    'levy', 'lien', 'garnish', 'collection',
+    // Wants a human / unresolved
+    'speak to', 'speak with', 'talk to a human', 'talk to someone', 'real person',
+    'human', 'call me back', 'follow up', 'follow-up', 'callback', 'urgent',
+    'complaint', 'upset', 'frustrated', 'angry', 'escalate', 'manager',
+    'ebere', 'cpa directly', 'not sure', 'unable to', "couldn't help", 'transfer'
+  ];
   const s = summary.toLowerCase();
   return flags.some((f) => s.includes(f));
 }
@@ -618,13 +627,14 @@ async function processCallWebhook(payload = {}) {
 
   // Auto-enqueue an escalation for transferred / action-needed calls so
   // staff sees them in the Escalations tab without a manual step.
+  console.log(`[SuperAgent] Escalation decision · transferred=${transferred} · action_needed=${actionNeeded} · will_escalate=${Boolean(aiHandoffSummary)} · summary="${(summary || '').slice(0, 60)}"`);
   if (aiHandoffSummary) {
     try {
       const escSvc = require('./escalationService');
       const subject = transferred
         ? `Transferred call from ${clientName}`
         : `Action needed: ${(topics && topics[0]) || 'follow-up required'}`;
-      escSvc.enqueue({
+      const item = escSvc.enqueue({
         type: 'call',
         call_log_id: savedCallId,
         client_name: clientName,
@@ -635,7 +645,7 @@ async function processCallWebhook(payload = {}) {
         urgency: detectActionNeeded(summary) ? 'high' : 'medium',
         ai_handoff_summary: aiHandoffSummary
       });
-      console.log(`[SuperAgent] Escalation enqueued for call ${savedCallId}`);
+      console.log(`[SuperAgent] ✓ Escalation enqueued · id=${item.id} · for call ${savedCallId}`);
     } catch (err) {
       console.warn('[SuperAgent] escalation enqueue failed:', err.message);
     }

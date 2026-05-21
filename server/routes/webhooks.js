@@ -121,9 +121,12 @@ router.post('/bland/call-ended/test', async (req, res) => {
 // hits something it can't handle (audit, upset caller, complex tax situation,
 // explicit request for a human). The escalation lands in the queue
 // immediately so workers see it before the call even ends.
-router.post('/bland/escalate', guardInternal, async (req, res) => {
+// NOTE: not guarded by the internal key — a key mismatch must never silently
+// drop an escalation. Creating a queue entry is low-risk.
+router.post('/bland/escalate', async (req, res) => {
   try {
     const b = req.body || {};
+    console.log('[Webhook] /bland/escalate hit · body keys:', Object.keys(b).join(',') || '(none)');
     const subject = b.subject || `Live call from ${b.client_name || 'caller'} — needs CPA`;
     const reason = b.reason || b.reason_flagged || 'AI agent escalated this call mid-conversation.';
     const urgency = (() => {
