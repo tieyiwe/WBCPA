@@ -77,7 +77,11 @@ export const dialOutbound = (data) =>
 // ─── Calendar ────────────────────────────────────────────────────────────────
 export const getAppointments = () => request('/calendar');
 export const getAvailableSlots = () => request('/calendar/slots');
+export const getCalendarGrid = () => request('/calendar/grid');
 export const getTodayAppointments = () => request('/calendar/today');
+export const getAvailabilityConfig = () => request('/calendar/availability-config');
+export const setAvailabilityConfig = (config) =>
+  request('/calendar/availability-config', { method: 'PUT', body: JSON.stringify(config) });
 export const bookManually = (data) =>
   request('/calendar/book-admin', { method: 'POST', body: JSON.stringify(data) });
 export const cancelAppointment = (id, reason) =>
