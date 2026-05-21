@@ -416,7 +416,7 @@ const MOCK_REVIEW_QUEUE = [
   {
     id: 'rq_001',
     type: 'email',
-    source: 'email_agent',
+    source: 'seed',
     email_log_id: 'email_003',
     call_log_id: null,
     client_name: 'David Ramirez',
@@ -439,7 +439,7 @@ const MOCK_REVIEW_QUEUE = [
   {
     id: 'rq_002',
     type: 'call',
-    source: 'bland_agent',
+    source: 'seed',
     email_log_id: null,
     call_log_id: 'call_003',
     client_name: 'David Ramirez',
@@ -462,7 +462,7 @@ const MOCK_REVIEW_QUEUE = [
   {
     id: 'rq_003',
     type: 'call',
-    source: 'bland_agent',
+    source: 'seed',
     email_log_id: null,
     call_log_id: null,
     client_name: 'Unknown caller',
@@ -485,7 +485,7 @@ const MOCK_REVIEW_QUEUE = [
   {
     id: 'rq_004',
     type: 'email',
-    source: 'email_agent',
+    source: 'seed',
     email_log_id: null,
     call_log_id: null,
     client_name: 'Sarah Chen',
@@ -508,7 +508,7 @@ const MOCK_REVIEW_QUEUE = [
   {
     id: 'rq_005',
     type: 'call',
-    source: 'bland_agent',
+    source: 'seed',
     email_log_id: null,
     call_log_id: null,
     client_name: 'Marcus Johnson',

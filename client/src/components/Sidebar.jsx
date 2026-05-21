@@ -81,6 +81,7 @@ export default function Sidebar() {
   const [season, setSeason] = useState(null);
   const [reviewCount, setReviewCount] = useState(0);
   const [openEscalations, setOpenEscalations] = useState(0);
+  const [liveEscalations, setLiveEscalations] = useState(0);
   const [pendingDocs, setPendingDocs] = useState(0);
   const [profile, setProfile] = useState(null);
   const location = useLocation();
@@ -113,7 +114,10 @@ export default function Sidebar() {
       ]);
       if (!mounted) return;
       if (queue?.queue) setReviewCount(queue.queue.length);
-      if (escSummary?.summary) setOpenEscalations(escSummary.summary.open);
+      if (escSummary?.summary) {
+        setOpenEscalations(escSummary.summary.open);
+        setLiveEscalations(escSummary.summary.live_open || 0);
+      }
       if (me?.profile) setProfile(me.profile);
       if (docSum?.summary) setPendingDocs(docSum.summary.pending_action || 0);
     }
@@ -182,7 +186,7 @@ export default function Sidebar() {
                   <span style={{ width: 18, textAlign: 'center', color: 'var(--gold)' }}>{item.icon}</span>
                   <span>{item.title}</span>
                   {item.badgeKey && badges[item.badgeKey] > 0 && (
-                    <span className={`badge ${item.badgeKey === 'openEscalations' ? 'badge-urgent-pulse' : ''}`}
+                    <span className={`badge ${item.badgeKey === 'openEscalations' && liveEscalations > 0 ? 'badge-urgent-pulse' : ''}`}
                           style={item.badgeKey === 'openEscalations'
                             ? { background: 'rgba(184,58,38,0.15)', color: 'var(--error)', borderColor: 'rgba(184,58,38,0.45)' }
                             : undefined}>

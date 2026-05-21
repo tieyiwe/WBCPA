@@ -33,13 +33,15 @@ function listEscalations({ status, claimed_by_id, scope } = {}) {
 
 function summary({ actorId } = {}) {
   const open = state.queue.filter((r) => r.status === 'open').length;
+  // Live = open escalations that came from a real call/AI handoff (not demo seed).
+  const live_open = state.queue.filter((r) => r.status === 'open' && r.source === 'bland_agent').length;
   const claimed = state.queue.filter((r) => r.status === 'claimed').length;
   const mine = actorId ? state.queue.filter((r) => r.claimed_by_id === actorId && r.status === 'claimed').length : 0;
   const resolved24h = state.queue.filter((r) => {
     if (r.status !== 'resolved' || !r.resolved_at) return false;
     return Date.now() - new Date(r.resolved_at).getTime() < 86400000;
   }).length;
-  return { open, claimed, mine, resolved_24h: resolved24h };
+  return { open, live_open, claimed, mine, resolved_24h: resolved24h };
 }
 
 function getEscalation(id) {

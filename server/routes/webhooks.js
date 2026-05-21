@@ -20,14 +20,25 @@ const { guardInternal } = require('../middleware/internalKey');
 const router = express.Router();
 
 const BLAND_WEBHOOK_SECRET = process.env.BLAND_WEBHOOK_SECRET || null;
+// Signature checking is OFF by default so a stray secret can never silently
+// drop real Bland webhooks. Turn it on explicitly with BLAND_WEBHOOK_STRICT=true
+// AND configure Bland to send Authorization: Bearer <BLAND_WEBHOOK_SECRET>.
+const BLAND_WEBHOOK_STRICT = process.env.BLAND_WEBHOOK_STRICT === 'true';
 
-// Optional shared-secret check — set BLAND_WEBHOOK_SECRET in Replit Secrets
-// AND configure the same value in Bland's webhook settings to enable.
+// Log every inbound webhook hit so it's obvious in the deploy logs whether
+// Bland is actually reaching us.
+router.use((req, _res, next) => {
+  console.log(`[Webhook] ${req.method} ${req.originalUrl} · from ${req.ip} · body keys: ${Object.keys(req.body || {}).join(',') || '(none)'}`);
+  next();
+});
+
 function verifyBlandSignature(req) {
-  if (!BLAND_WEBHOOK_SECRET) return true; // disabled when no secret configured
+  if (!BLAND_WEBHOOK_SECRET || !BLAND_WEBHOOK_STRICT) return true; // accept by default
   const header = req.headers['authorization'] || req.headers['x-bland-signature'] || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : header;
-  return token === BLAND_WEBHOOK_SECRET;
+  const ok = token === BLAND_WEBHOOK_SECRET;
+  if (!ok) console.warn('[Webhook] signature mismatch (strict mode on) — rejecting');
+  return ok;
 }
 
 // Fires when a call is INITIATED — creates an "ongoing" record so the call
