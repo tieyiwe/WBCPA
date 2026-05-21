@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { initials, formatPhone, formatDuration, timeAgo } from '../lib/utils.js';
+import { initials, formatPhone, formatDuration, timeAgo, formatET } from '../lib/utils.js';
 import { requestCallback } from '../lib/api.js';
 import { useRole } from '../lib/roleContext.jsx';
 
@@ -65,9 +65,17 @@ export default function CallItem({ call, defaultOpen = false }) {
         </div>
         <div className="summary">{call.summary || 'No summary available.'}</div>
         <div className="meta">
+          <span title={formatET(call.called_at)} style={{ fontWeight: 600, color: 'var(--text)' }}>{formatET(call.called_at)}</span>
+          <span>·</span>
           <span>{timeAgo(call.called_at)}</span>
           <span>·</span>
           <span>{formatDuration(call.duration_seconds)}</span>
+          {call.status === 'completed' && call.ended_at && (
+            <>
+              <span>·</span>
+              <span>ended {formatET(call.ended_at)}</span>
+            </>
+          )}
           {call.recording_url && (
             <>
               <span>·</span>

@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { getEscalations, claimEscalation, releaseEscalation, resolveEscalation, respondEscalation, requestCallback } from '../lib/api.js';
 import { useRole } from '../lib/roleContext.jsx';
 import { AccessDenied } from '../components/PermissionGate.jsx';
-import { timeAgo, initials, formatPhone } from '../lib/utils.js';
+import { timeAgo, initials, formatPhone, formatET } from '../lib/utils.js';
 
 const SCOPES = [
   { key: 'active', label: 'Active queue', sub: 'Open + in-progress' },
@@ -273,7 +273,7 @@ function EscalationCard({ item, can, role, pending, recentlyAccepted, isNew, onA
             {isResolved && (
               <span className="badge badge-green">Resolved by {item.resolved_by_name}</span>
             )}
-            <span style={{ color: 'var(--text-dim)', fontSize: '0.78rem' }}>· {timeAgo(item.created_at)}</span>
+            <span style={{ color: 'var(--text-dim)', fontSize: '0.78rem' }}>· {formatET(item.created_at)} · {timeAgo(item.created_at)}</span>
           </div>
 
           <div style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: 4 }}>{item.subject}</div>
@@ -308,7 +308,7 @@ function EscalationCard({ item, can, role, pending, recentlyAccepted, isNew, onA
               </div>
               {item.resolution_notes}
               <div style={{ color: 'var(--text-dim)', fontSize: '0.74rem', marginTop: 4 }}>
-                Resolved {timeAgo(item.resolved_at)}
+                Resolved {formatET(item.resolved_at)} · {timeAgo(item.resolved_at)}
               </div>
             </div>
           )}
