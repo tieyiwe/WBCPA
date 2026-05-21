@@ -734,12 +734,20 @@ async function getAgentStats() {
 }
 
 async function getRecentCalls(filter, limit = 50) {
+  // Newest on top; ongoing calls pinned above completed ones.
+  const sortNewestFirst = (list) => list.slice().sort((a, b) => {
+    const ao = a.status === 'ongoing' ? 1 : 0;
+    const bo = b.status === 'ongoing' ? 1 : 0;
+    if (ao !== bo) return bo - ao;
+    return new Date(b.called_at || 0) - new Date(a.called_at || 0);
+  });
+
   if (!isConfigured()) {
     let list = [...MOCK_CALLS];
     if (filter === 'bookings') list = list.filter((c) => c.booking_made);
     if (filter === 'transferred') list = list.filter((c) => c.transferred);
     if (filter === 'action_needed') list = list.filter((c) => c.action_needed);
-    return list.slice(0, limit);
+    return sortNewestFirst(list).slice(0, limit);
   }
 
   try {
@@ -749,10 +757,10 @@ async function getRecentCalls(filter, limit = 50) {
     if (filter === 'action_needed') q = q.eq('action_needed', true);
     const { data, error } = await q;
     if (error) throw error;
-    return data || [];
+    return sortNewestFirst(data || []);
   } catch (err) {
     console.warn('[SuperAgent] getRecentCalls failed:', err.message);
-    return MOCK_CALLS.slice(0, limit);
+    return sortNewestFirst(MOCK_CALLS).slice(0, limit);
   }
 }
 
